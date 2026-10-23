@@ -2,7 +2,7 @@ const {boot,source}=require('./helpers.cjs');const assert=require('assert');
 (async()=>{
  const placeholder='https://example.api.powerplatform.com/test';
  function create(code=source,status=403){let requests=0;const app=boot(code,{globals:{GM_getValue:(k,d)=>d,GM_setValue:()=>{},GM_xmlhttpRequest:o=>{requests++;o.onload({status});}}});
-  app.storage.set('jira-monitor-batch-v5',JSON.stringify({id:'test',mode:'batch',active:false,index:1,queue:[{key:'TEST-1'}],rules:[{name:'DEV',minDays:4,maxDays:5}],results:[{key:'TEST-1',summary:'Example',assignee:'Person',rules:[{name:'DEV',seconds:86400}]}]}));
+  app.storage.set('jira-monitor-batch-v5',JSON.stringify({id:'test',mode:'batch',active:false,index:1,queue:[{key:'TEST-1'}],rules:[{name:'DEV',minDays:4,maxDays:5,currentStatuses:['In Progress']}],results:[{key:'TEST-1',summary:'Example',assignee:'Person',rules:[{name:'DEV',seconds:86400}]}]}));
   const panel=app.root.children.find(x=>x.id==='jira-duration-panel-host').shadowRoot;
   return {app,panel,count:()=>requests};
  }
