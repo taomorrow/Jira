@@ -1,0 +1,23 @@
+const assert=require('assert');const {boot,source}=require('./helpers.cjs');
+(async()=>{
+ let code=source.replace('const sleep = ms => new Promise(r => setTimeout(r, ms));','const sleep = () => Promise.resolve();');
+ let a=code.indexOf('  function summaryLinks()'),b=code.indexOf('  // Shadow DOM',a);code=code.slice(0,a)+'  function summaryLinks(){return globalThis.testLinks;}\n'+code.slice(b);
+ a=code.indexOf('  async function inspect(');b=code.indexOf('  function onOverview(',a);code=code.slice(0,a)+'  async function inspect(){return globalThis.testInspect();}\n'+code.slice(b);
+ code=code.replace('  } catch(error) { report(error); }','  globalThis.testPump=pump;\n  } catch(error) { report(error); }');
+ const location={pathname:'/issues/',href:'https://jira.xpaas.lenovo.com/issues/?filter=-1'};let clicks=0,resolveInspect;
+ const anchor={scrollIntoView(){},removeAttribute(){},addEventListener(){},click(){clicks++;location.pathname='/browse/CSP-14';location.href='https://jira.xpaas.lenovo.com/browse/CSP-14';}};
+ const app=boot(code,{location,querySelector:q=>q.startsWith('#issuetable')&&location.pathname==='/issues/'?{}:null,globals:{testLinks:[{key:'CSP-14',href:'https://jira.xpaas.lenovo.com/browse/CSP-14',anchor}],testInspect:()=>new Promise(r=>{resolveInspect=r;}),history:{back(){location.pathname='/issues/';location.href='https://jira.xpaas.lenovo.com/issues/?filter=-1';}}}});
+ const panel=app.root.children.find(x=>x.id==='jira-duration-panel-host').shadowRoot;
+ const click=attr=>panel.querySelector('['+attr+']').onclick();
+ const rules=[{name:'DEV',minDays:2.5,maxDays:4.5,currentStatuses:['In Progress'],startStatus:'In Progress',forbiddenAfterStart:[]}];
+ const state={id:'batch13',active:true,mode:'batch',scope:'page',listUrl:location.href,phase:'returning',index:13,queue:Array.from({length:27},(_,i)=>({key:'CSP-'+(i+1),href:'https://jira.xpaas.lenovo.com/browse/CSP-'+(i+1)})),results:Array.from({length:13},(_,i)=>({key:'CSP-'+(i+1),rules:[]})),rules};
+ const read=()=>JSON.parse(app.storage.get('jira-monitor-batch-v5'));app.storage.set('jira-monitor-batch-v5',JSON.stringify(state));
+ click('data-pause');assert.equal(read().paused,true);assert.equal(read().index,13);await app.ctx.testPump();assert.equal(clicks,0);
+ await click('data-start');await new Promise(r=>setImmediate(r));assert.equal(clicks,1);assert.equal(read().id,'batch13');assert.equal(read().index,13);assert.equal(read().results.length,13);
+ const pending=app.ctx.testPump();assert.equal(read().phase,'reading');click('data-pause');resolveInspect({rules:[]});await pending;assert.equal(read().index,13,'暂停后旧请求不得追加结果');assert.equal(read().results.length,13);
+ await click('data-start');resolveInspect({rules:[]});await new Promise(r=>setImmediate(r));assert.equal(read().index,14);assert.equal(read().results.length,14);assert.equal(read().results[13].key,'CSP-14');
+ click('data-pause');click('data-stop');assert.equal(read().paused,false);assert.equal(read().active,false);assert.equal(read().phase,'stopped');assert.equal(read().results.length,14);
+ panel.querySelector('[data-scope]').value='page';await click('data-start');assert.notEqual(read().id,'batch13');assert.equal(read().index,0);assert.equal(read().results.length,0);
+ click('data-stop');await new Promise(r=>setImmediate(r));
+ console.log('PASS: pause at 13/27, no paused navigation, resume same queue, discard stale in-flight result, count once, stop terminates, next start creates fresh scan');
+})().catch(e=>{console.error(e);process.exitCode=1;});

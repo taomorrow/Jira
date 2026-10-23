@@ -1,0 +1,20 @@
+const assert=require('assert');const {boot,source}=require('./helpers.cjs');
+(async()=>{
+ let code=source.replace('const sleep = ms => new Promise(r => setTimeout(r, ms));','const sleep = () => Promise.resolve();');
+ let a=code.indexOf('  function summaryLinks()'),b=code.indexOf('  // Shadow DOM',a);code=code.slice(0,a)+'  function summaryLinks(){return globalThis.getTestRows();}\n'+code.slice(b);
+ a=code.indexOf('  async function inspect(');b=code.indexOf('  function onOverview(',a);code=code.slice(0,a)+'  async function inspect(){return {rules:[]};}\n'+code.slice(b);
+ code=code.replace('  } catch(error) { report(error); }','  globalThis.testPump=pump;\n  } catch(error) { report(error); }');
+ let page=1,nextClicks=0,issueClicks=0;const location={pathname:'/issues/',href:'https://jira.xpaas.lenovo.com/issues/?filter=-1'};
+ const next={textContent:'›',href:'https://jira.xpaas.lenovo.com/issues/?filter=-1&startIndex=2',getAttribute:()=>null,closest:()=>null,getClientRects:()=>[{}],scrollIntoView(){},click(){nextClicks++;page=2;location.href=this.href;app.ctx.document.body.innerText='Showing results 3-4 of 4';}};
+ const rows=()=>[{key:page===1?'CSP-1':'CSP-2',summary:'Summary',currentStatus:'In Progress',href:'https://jira.xpaas.lenovo.com/browse/CSP-'+page,anchor:{scrollIntoView(){},removeAttribute(){},addEventListener(){},click(){issueClicks++;location.pathname='/browse/CSP-2';location.href='https://jira.xpaas.lenovo.com/browse/CSP-2';}}},{key:page===1?'CSP-9':'CSP-8',currentStatus:'Open'}];
+ const app=boot(code,{location,querySelector:q=>q.startsWith('#issuetable')&&location.pathname==='/issues/'?{}:null,globals:{getTestRows:rows,history:{back(){location.pathname='/issues/';location.href=next.href;}}}});
+ app.ctx.document.querySelectorAll=()=>page===1?[next]:[];app.ctx.document.body.innerText='Showing results 1-2 of 4';
+ const rules=[{name:'DEV',minDays:2.5,maxDays:4.5,currentStatuses:['In Progress'],startStatus:'In Progress',forbiddenAfterStart:[]}];
+ const state={id:'pages',active:true,mode:'batch',scope:'all',domPaging:true,rules,listUrl:location.href,phase:'returning',index:1,queue:[{key:'CSP-1'}],results:[{key:'CSP-1',rules:[]}],visitedPages:['CSP-1|CSP-9'],pageNumber:1};
+ const read=()=>JSON.parse(app.storage.get('jira-monitor-batch-v5'));app.storage.set('jira-monitor-batch-v5',JSON.stringify(state));
+ await app.ctx.testPump();assert.equal(nextClicks,1);assert.equal(read().phase,'paging');
+ await app.ctx.testPump();assert.equal(read().pageNumber,2);assert.equal(read().queue.length,2);assert.equal(read().listUrl,next.href);
+ await app.ctx.testPump();assert.equal(issueClicks,1);await app.ctx.testPump();await app.ctx.testPump();
+ assert.equal(read().active,false);assert.equal(read().phase,'done');assert.equal(read().index,2);assert.equal(read().results.length,2);
+ console.log('PASS: real next-control detection/click, append eligible page-2 rows, open/read/return page 2, finish only on last page');
+})().catch(e=>{console.error(e);process.exitCode=1;});
