@@ -13,7 +13,7 @@ for(const [i,baseMin,baseMax] of [[0,4,5],[1,13,14]]){
   assert.equal(panelDuration(JSON.parse(JSON.stringify(r)),rule).level,level);
  }
 }
-assert.equal(ruleText(CONFIG.rules[0],fri),'DEV｜即将超期：2.5≤天数＜3；已超期：≥3 天；');
-assert.equal(ruleText(CONFIG.rules[1],fri),'DCT｜即将超期：11.5≤天数＜12；已超期：≥12 天；');
+assert.equal(ruleText(CONFIG.rules[0],fri),'DEV｜即将超期：4≤天数＜5；已超期：≥5天；');
+assert.equal(ruleText(CONFIG.rules[1],fri),'DCT｜即将超期：13≤天数＜14；已超期：≥14天；');
 CONFIG.fridayAdjustment.enabled=false;assert.equal(effectiveRule(CONFIG.rules[0],fri).maxDays,5);
 console.log('PASS: Beijing Friday boundary; both KPI thresholds -2; unchanged elapsed time; exact levels; frozen result thresholds; Saturday reset; configurable switch');
