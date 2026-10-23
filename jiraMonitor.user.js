@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Jira Monitor
 // @namespace    https://github.com/taomorrow/Jira
-// @version      5.0.2
+// @version      5.0.3
 // @description  详情自动分析、总览手动批量扫描；统一DEV/DCT、周五阈值、Excel和Teams通知
 // @match        https://jira.xpaas.lenovo.com/*
 // @sandbox      DOM
@@ -9,8 +9,8 @@
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getValue
 // @grant        GM_setValue
-// @connect      *.api.powerplatform.com
-// @connect      *.logic.azure.com
+// @connect      api.powerplatform.com
+// @connect      logic.azure.com
 // @homepageURL  https://github.com/taomorrow/Jira
 // @supportURL   https://github.com/taomorrow/Jira/issues
 // @downloadURL  https://raw.githubusercontent.com/taomorrow/Jira/main/jiraMonitor.user.js
@@ -48,11 +48,11 @@
   if (window.top !== window.self) return;
   if (!/^\/(issues|browse)(\/|$)/.test(location.pathname)) return;
   const badge=document.createElement('div');
-  badge.textContent='Jira Monitor v5.0.2 已注入，正在初始化…';
+  badge.textContent='Jira Monitor v5.0.3 已注入，正在初始化…';
   badge.style.cssText='position:fixed!important;top:8px!important;right:12px!important;z-index:2147483647!important;background:#0052cc!important;color:white!important;padding:8px!important;font:13px Arial!important;max-width:80vw!important;white-space:pre-wrap!important';
   (document.body||document.documentElement).append(badge);
   function report(error) {
-    const text='Jira Monitor v5.0.2 启动失败：'+(error?.message||error);
+    const text='Jira Monitor v5.0.3 启动失败：'+(error?.message||error);
     badge.textContent=text;badge.style.background='#ae2a19';
     (document.body||document.documentElement).append(badge);
     const box=document.createElement('div');box.textContent=text+'。请检查代码开头 CONFIG 配置。';
@@ -241,7 +241,7 @@
   panel.style.cssText='box-sizing:border-box;position:relative;width:100%;height:min(520px,75vh);max-height:75vh;overflow:hidden;z-index:2147483647;background:#fff;color:#172b4d;border:2px solid #0052cc;border-radius:8px;padding:14px;box-shadow:0 4px 24px #0004;font:13px Arial';
   // 使用 DOM 构建，避免站点 Trusted Types 策略拒绝 innerHTML。
   const make=(tag,text,attr,parent)=>{const x=document.createElement(tag);if(text)x.textContent=text;if(attr)x.setAttribute(attr,'');parent.append(x);return x;};
-  make('b','Jira Monitor v5.0.2',null,panel);
+  make('b','Jira Monitor v5.0.3',null,panel);
   const fold=make('button','收起','data-fold',panel);fold.style.float='right';
   const body=make('div',null,'data-body',panel);
   body.style.cssText='display:flex;flex-direction:column;height:calc(100% - 24px);min-height:0';
@@ -359,7 +359,10 @@
           let detail='';try{const body=JSON.parse(r.responseText||'{}');detail=body.error?.message||body.message||'';}catch{detail=(r.responseText||'').slice(0,600);}
           reject(new Error('Webhook HTTP '+r.status+(detail?'：'+safeError(detail):'')));
         },
-        onerror:r=>reject(new Error('Webhook 网络请求失败'+(r?.status?'，HTTP '+r.status:'')+'；检查油猴跨域授权、公司网络/代理及地址是否有效')),
+        onerror:r=>{
+          const details=[r?.status?'HTTP '+r.status:'未收到 HTTP 响应',r?.statusText,r?.error].filter(Boolean).map(safeError).join('；');
+          reject(new Error('Webhook 网络请求失败（'+details+'）；目标域名：'+new URL(CONFIG.teamsWebhookUrl).hostname+'。请在油猴脚本设置中检查 XHR/跨域域名授权；若工作流已有本次运行记录，请勿重复发送。'));
+        },
         onabort:()=>reject(new Error('Webhook 请求被中止')),
         ontimeout:()=>reject(new Error('Webhook 请求超时，发送结果未知，请先检查工作流运行记录再重试'))});}
       catch(error){reject(new Error('油猴请求未发出：'+safeError(error)));}
@@ -669,6 +672,6 @@
   addEventListener('pageshow',()=>{epoch++;busy=false;autoDetail();render();setTimeout(pump,800);});
   addEventListener('popstate',()=>{autoDetail();render();});
   setInterval(()=>{autoDetail();if(!host.isConnected)mountPanel();if(!badge.isConnected)document.documentElement.append(badge);pump();},1500);
-  render();badge.textContent='Jira Monitor v5.0.2 已启动 · 点击显示面板';badge.onclick=()=>{mountPanel();body.hidden=false;body.style.display='flex';panel.style.height=`min(${CONFIG.panelHeightPx}px,75vh)`;};autoDetail();setTimeout(pump,800);
+  render();badge.textContent='Jira Monitor v5.0.3 已启动 · 点击显示面板';badge.onclick=()=>{mountPanel();body.hidden=false;body.style.display='flex';panel.style.height=`min(${CONFIG.panelHeightPx}px,75vh)`;};autoDetail();setTimeout(pump,800);
   } catch(error) { report(error); }
 })();
