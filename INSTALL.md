@@ -1,6 +1,6 @@
 # 安装指南：Tampermonkey 与 Jira Monitor
 
-安装分两步：先安装浏览器扩展 Tampermonkey（油猴），再安装统一版 jiraMonitor 脚本。无需安装 Node.js 或下载整个仓库。
+安装分两步：先安装浏览器扩展 Tampermonkey（油猴），再安装统一版 Jira Monitor 脚本。无需安装 Node.js 或下载整个仓库。
 
 ## 1. 安装 Tampermonkey
 
@@ -29,7 +29,7 @@
 
 ## 3. 安装统一版脚本
 
-[安装 jiraMonitor 统一版](https://raw.githubusercontent.com/taomorrow/Jira/main/jiraMonitor.user.js)
+[安装 Jira Monitor 统一版](https://raw.githubusercontent.com/taomorrow/Jira/main/jiraMonitor.user.js)
 
 点击安装入口，出现 Tampermonkey 安装页后核对脚本名称与来源，点击“安装”。一份脚本同时适配总览与详情，不需要安装两版。已安装旧版的用户，请先停用 jiraMonitorOverview、jiraMonitorDetail 和其他旧脚本，避免重复分析和通知。
 
@@ -55,7 +55,7 @@
 
 完整功能和规则：
 
-- [jiraMonitor 统一版使用说明](jiraMonitor.md)
+- [Jira Monitor 统一版使用说明](jiraMonitor.md)
 
 ## 5. 可选：配置 Teams 通知
 
@@ -63,7 +63,7 @@
 
 1. 准备自己管理的 Teams / Power Automate Webhook，并在工作流中设置正确的接收聊天或频道。
 2. 打开匹配的 Jira 页面，点击油猴图标。
-3. 在所用脚本的菜单中选择 **Teams：配置 Webhook / 自动通知**。
+3. 在所用脚本的菜单中选择 **Jira Monitor：Teams 设置**。
 4. 输入自己的工作流地址，按提示选择开启自动通知，或仅保留手动发送。
 5. 刷新 Jira 页面。统一脚本的总览与详情共享设置；旧版设置不会自动迁移。
 
