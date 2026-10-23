@@ -247,7 +247,7 @@
   body.style.cssText='display:flex;flex-direction:column;height:calc(100% - 24px);min-height:0';
   panel.style.height=`min(${CONFIG.panelHeightPx}px,75vh)`;
   make('p','规则加载中…','data-config',body);
-  make('p','*周五扫描默认预警天数默认减 2 天。','data-friday-note',body).style.cssText='color:#de350b;font-size:12px;margin:0 0 10px;flex-shrink:0';
+  make('p','*周五扫描默认预警天数减 2 天。','data-friday-note',body).style.cssText='color:#de350b;font-size:12px;margin:0 0 10px;flex-shrink:0';
   const scope=make('select',null,'data-scope',body);
   const allOption=make('option','全部筛选结果',null,scope);allOption.value='all';
   const pageOption=make('option','仅当前分页',null,scope);pageOption.value='page';scope.value=CONFIG.scanScope;
