@@ -2,7 +2,7 @@
 
 面向 Jira Server / Data Center 的油猴脚本：扫描工单、计算 DEV/DCT 时长、导出 Excel，并可通过用户自己的 Teams Workflow Webhook 发送通知。
 
-当前适配 `https://jira.xpaas.lenovo.com`，需要已登录且有权查看相应工单。未在其他 Jira 实例或 Jira Cloud 验证。
+需要已登录且有权查看相应工单。未在其他 Jira 实例或 Jira Cloud 验证。
 
 | 脚本 | 使用场景 | 安装 | 文档 |
 |---|---|---|---|
