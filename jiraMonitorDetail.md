@@ -1,5 +1,7 @@
 # jiraMonitorDetail
 
+首次使用？请先阅读 [Tampermonkey 与脚本安装指南](INSTALL.md)。
+
 打开 Jira 详情时自动分析当前工单，显示 DEV/DCT 结果，支持彩色 Excel 导出及 Teams 通知。公开版版本：1.7.1。
 
 ## 安装和使用

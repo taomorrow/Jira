@@ -1,5 +1,7 @@
 # jiraMonitorOverview
 
+首次使用？请先阅读 [Tampermonkey 与脚本安装指南](INSTALL.md)。
+
 总览批量扫描脚本，支持自动翻页、暂停/继续、彩色 Excel 导出，以及 Teams 通知。公开版版本：4.8.4。
 
 ## 安装与适用范围
