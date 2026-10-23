@@ -2,7 +2,7 @@
 
 首次使用？请先阅读 [Tampermonkey 与脚本安装指南](INSTALL.md)。
 
-统一版脚本：详情自动分析，总览手动启动批量扫描；共用规则、Teams通知、去重、设置和Excel导出。公开版版本：5.0.0。
+统一版脚本：详情自动分析，总览手动启动批量扫描；共用规则、Teams通知、去重、设置和Excel导出。公开版版本：5.0.1。
 
 ## 安装与适用范围
 
@@ -93,3 +93,7 @@ Duration = 当前系统扫描时刻 − 起始时刻。1天=24小时，使用自
 ## 本地验证
 
 无需第三方依赖，安装Node.js后运行 `node --check jiraMonitor.user.js`，以及 `node tests/test-monitor.cjs`、`node tests/test-navigation.cjs`、`node tests/test-ui-pages.cjs`、`node tests/test-pause.cjs`、`node tests/test-friday.cjs`。测试使用模拟页面/请求，不发送真实通知。
+
+## v5.0.1 通知错误诊断
+
+没有存储配置时保留CONFIG中的默认值；有菜单保存记录时以菜单为准（留空即停用）。公开默认仍为空且不自动通知。发送前显示未配置/不支持地址的明确提示；发送失败后汇总保留具体工单及HTTP/网络错误，不再被总条数覆盖。推荐通过菜单配置，不要把私人Webhook提交到仓库。

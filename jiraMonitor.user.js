@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name          jira Monitor Overview
 // @namespace    https://github.com/taomorrow/Jira
-// @version      5.0.0
+// @version      5.0.1
 // @description  详情自动分析、总览手动批量扫描；统一DEV/DCT、周五阈值、Excel和Teams通知
 // @match        https://jira.xpaas.lenovo.com/*
 // @sandbox      DOM
@@ -48,11 +48,11 @@
   if (window.top !== window.self) return;
   if (!/^\/(issues|browse)(\/|$)/.test(location.pathname)) return;
   const badge=document.createElement('div');
-  badge.textContent='Jira v5.0.0 已注入，正在初始化…';
+  badge.textContent='Jira v5.0.1 已注入，正在初始化…';
   badge.style.cssText='position:fixed!important;top:8px!important;right:12px!important;z-index:2147483647!important;background:#0052cc!important;color:white!important;padding:8px!important;font:13px Arial!important;max-width:80vw!important;white-space:pre-wrap!important';
   (document.body||document.documentElement).append(badge);
   function report(error) {
-    const text='Jira v5.0.0 启动失败：'+(error?.message||error);
+    const text='Jira v5.0.1 启动失败：'+(error?.message||error);
     badge.textContent=text;badge.style.background='#ae2a19';
     (document.body||document.documentElement).append(badge);
     const box=document.createElement('div');box.textContent=text+'。请检查代码开头 CONFIG 配置。';
@@ -67,8 +67,8 @@
   const WEBHOOK_SETTING='jira-monitor-webhook';
   const AUTO_SETTING='jira-monitor-auto-notify';
   try{
-    CONFIG.teamsWebhookUrl=GM_getValue(WEBHOOK_SETTING,'');
-    CONFIG.autoNotifyApproaching=GM_getValue(AUTO_SETTING,false)===true;
+    CONFIG.teamsWebhookUrl=GM_getValue(WEBHOOK_SETTING,CONFIG.teamsWebhookUrl);
+    CONFIG.autoNotifyApproaching=GM_getValue(AUTO_SETTING,CONFIG.autoNotifyApproaching)===true;
   }catch{}
   function supportedWebhook(value){
     try{const u=new URL(value);return u.protocol==='https:'&&(/(^|\.)api\.powerplatform\.com$/i.test(u.hostname)||/(^|\.)logic\.azure\.com$/i.test(u.hostname));}catch{return false;}
@@ -242,7 +242,7 @@
   panel.style.cssText='box-sizing:border-box;position:relative;width:100%;height:min(520px,75vh);max-height:75vh;overflow:hidden;z-index:2147483647;background:#fff;color:#172b4d;border:2px solid #0052cc;border-radius:8px;padding:14px;box-shadow:0 4px 24px #0004;font:13px Arial';
   // 使用 DOM 构建，避免站点 Trusted Types 策略拒绝 innerHTML。
   const make=(tag,text,attr,parent)=>{const x=document.createElement(tag);if(text)x.textContent=text;if(attr)x.setAttribute(attr,'');parent.append(x);return x;};
-  make('b','jiraMonitor v5.0.0',null,panel);
+  make('b','jiraMonitor v5.0.1',null,panel);
   const fold=make('button','收起','data-fold',panel);fold.style.float='right';
   const body=make('div',null,'data-body',panel);
   body.style.cssText='display:flex;flex-direction:column;height:calc(100% - 24px);min-height:0';
@@ -260,7 +260,7 @@
   make('button','停止','data-stop',actions);
   make('button','导出 Excel','data-excel',actions);
   make('button','发送 Teams','data-teams',actions);
-  make('p',null,'data-notice',body);
+  make('p',null,'data-notice',body).style.cssText='white-space:pre-wrap;overflow-wrap:anywhere;max-height:100px;overflow-y:auto';
   make('p',null,'data-progress',body);make('p',null,'data-totals',body);const resultsBox=make('div',null,'data-results',body);
   resultsBox.style.cssText='flex:1;min-height:80px;overflow-y:auto;overscroll-behavior:contain';
   mountPanel();
@@ -380,12 +380,14 @@
     const s=get();if(teamsSending||s?.active)return;
     const items=(s?.results||[]).filter(item=>item.rules?.some(r=>Number.isFinite(r.seconds)));
     if(!items.length){notice('没有有效计时结果，无需发送');return;}
-    teamsSending=true;render();let success=0,failed=0;
+    if(!CONFIG.teamsWebhookUrl){notice('未发送：请在油猴菜单「Teams：配置 Webhook / 自动通知」中设置地址，然后刷新页面');return;}
+    if(!supportedWebhook(CONFIG.teamsWebhookUrl)){notice('未发送：Webhook 地址不受支持，请通过油猴菜单重新配置');return;}
+    teamsSending=true;render();let success=0,failed=0;const errors=[];
     for(const item of items){
       notice('正在发送 '+item.key+'…');
-      try{await sendOverviewItem(item,s.rules||CONFIG.rules,false);success++;}catch(error){failed++;notice(item.key+'：'+error.message);}
+      try{await sendOverviewItem(item,s.rules||CONFIG.rules,false);success++;}catch(error){failed++;errors.push(item.key+'：'+error.message);notice(errors[errors.length-1]);}
     }
-    teamsSending=false;notice('Teams 已提交 '+success+' 条，失败 '+failed+' 条（工作流接收不代表投递完成）');render();
+    teamsSending=false;notice('Teams 已提交 '+success+' 条，失败 '+failed+' 条（工作流接收不代表投递完成）'+(errors.length?'\n'+errors.join('\n'):''));render();
   };
   function update(message) {const s=get();if(s?.active){s.message=message;save(s);render();}}
   function valid(id, token) { const s=get();if(!s?.active || s.id!==id || token!==epoch)throw new Error('CANCELLED');return s; }
@@ -651,6 +653,6 @@
   addEventListener('pageshow',()=>{epoch++;busy=false;autoDetail();render();setTimeout(pump,800);});
   addEventListener('popstate',()=>{autoDetail();render();});
   setInterval(()=>{autoDetail();if(!host.isConnected)mountPanel();if(!badge.isConnected)document.documentElement.append(badge);pump();},1500);
-  render();badge.textContent='Jira v5.0.0 已启动 · 点击显示面板';badge.onclick=()=>{mountPanel();body.hidden=false;body.style.display='flex';panel.style.height=`min(${CONFIG.panelHeightPx}px,75vh)`;};autoDetail();setTimeout(pump,800);
+  render();badge.textContent='Jira v5.0.1 已启动 · 点击显示面板';badge.onclick=()=>{mountPanel();body.hidden=false;body.style.display='flex';panel.style.height=`min(${CONFIG.panelHeightPx}px,75vh)`;};autoDetail();setTimeout(pump,800);
   } catch(error) { report(error); }
 })();
