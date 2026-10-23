@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name          jira Monitor Overview
 // @namespace    https://github.com/taomorrow/Jira
-// @version      4.8.4
-// @description  History 精确时间计时；DEV/DCT 当前状态范围；彩色 Excel 导出
+// @version      5.0.0
+// @description  详情自动分析、总览手动批量扫描；统一DEV/DCT、周五阈值、Excel和Teams通知
 // @match        https://jira.xpaas.lenovo.com/*
 // @sandbox      DOM
 // @grant        GM_registerMenuCommand
@@ -13,8 +13,8 @@
 // @connect      *.logic.azure.com
 // @homepageURL  https://github.com/taomorrow/Jira
 // @supportURL   https://github.com/taomorrow/Jira/issues
-// @downloadURL  https://raw.githubusercontent.com/taomorrow/Jira/main/jiraMonitorOverview.user.js
-// @updateURL    https://raw.githubusercontent.com/taomorrow/Jira/main/jiraMonitorOverview.user.js
+// @downloadURL  https://raw.githubusercontent.com/taomorrow/Jira/main/jiraMonitor.user.js
+// @updateURL    https://raw.githubusercontent.com/taomorrow/Jira/main/jiraMonitor.user.js
 // @run-at       document-idle
 // @noframes
 // ==/UserScript==
@@ -48,18 +48,18 @@
   if (window.top !== window.self) return;
   if (!/^\/(issues|browse)(\/|$)/.test(location.pathname)) return;
   const badge=document.createElement('div');
-  badge.textContent='Jira v4.8.4 已注入，正在初始化…';
+  badge.textContent='Jira v5.0.0 已注入，正在初始化…';
   badge.style.cssText='position:fixed!important;top:8px!important;right:12px!important;z-index:2147483647!important;background:#0052cc!important;color:white!important;padding:8px!important;font:13px Arial!important;max-width:80vw!important;white-space:pre-wrap!important';
   (document.body||document.documentElement).append(badge);
   function report(error) {
-    const text='Jira v4.8.4 启动失败：'+(error?.message||error);
+    const text='Jira v5.0.0 启动失败：'+(error?.message||error);
     badge.textContent=text;badge.style.background='#ae2a19';
     (document.body||document.documentElement).append(badge);
     const box=document.createElement('div');box.textContent=text+'。请检查代码开头 CONFIG 配置。';
     box.style.cssText='position:fixed!important;right:16px!important;top:60px!important;z-index:2147483647!important;background:white!important;color:#ae2a19!important;border:2px solid #ae2a19!important;padding:18px!important;max-width:450px!important;font:14px Arial!important';
     document.documentElement.append(box);console.error('[Jira DEV]',error);
   }
-  if(typeof GM_registerMenuCommand==='function') GM_registerMenuCommand('jiraMonitorOverview：显示启动诊断',()=>{alert(badge.textContent+'\n页面：'+location.href);});
+  if(typeof GM_registerMenuCommand==='function') GM_registerMenuCommand('jiraMonitor：显示启动诊断',()=>{alert(badge.textContent+'\n页面：'+location.href);});
   try {
 
   // Public release: notification credentials stay in this user's userscript storage.
@@ -170,14 +170,17 @@
     const size=central.reduce((n,a)=>n+a.length,0),end=header(22);u32(end,0,0x06054b50);u16(end,8,Object.keys(files).length);u16(end,10,Object.keys(files).length);u32(end,12,size);u32(end,16,offset);
     const all=[...chunks,...central,end],out=new Uint8Array(all.reduce((n,a)=>n+a.length,0));let at=0;for(const a of all){out.set(a,at);at+=a.length;}return out;
   }
-  const STORE = 'jira-history-kpi-v4.8';
+  const STORE = 'jira-monitor-batch-v5';
+  const DETAIL_STORE='jira-monitor-detail-v5';
   const sleep = ms => new Promise(r => setTimeout(r, ms));
-  const get = () => { try {
-    const s=JSON.parse(sessionStorage.getItem(STORE));
-    if(s?.active&&s.rules?.some(r=>!Number.isFinite(r.minDays)||!Number.isFinite(r.maxDays))){s.active=false;s.message='规则已升级为双边界，请重新开始统计';sessionStorage.setItem(STORE,JSON.stringify(s));}
-    return s;
-  } catch { return null; } };
-  const save = s => sessionStorage.setItem(STORE, JSON.stringify(s));
+  const readState=key=>{try{return JSON.parse(sessionStorage.getItem(key));}catch{return null;}};
+  const isDetail=()=>/^\/browse\//i.test(location.pathname);
+  const get=()=>{
+    const batch=readState(STORE);
+    if(batch?.active||batch?.paused)return batch;
+    return isDetail()?readState(DETAIL_STORE):batch;
+  };
+  const save=s=>sessionStorage.setItem(s.mode==='single'?DETAIL_STORE:STORE,JSON.stringify(s));
   const keyOf = href => { try { const u=new URL(href,location.href); return u.searchParams.get('selectedIssue') || u.pathname.match(/\/browse\/([A-Z][A-Z0-9_]*-\d+)/i)?.[1]; } catch { return null; } };
   function readAssignee(doc=document) {
     const clean=node=>node?.textContent?.replace(/\s+/g,' ').trim()||'';
@@ -239,7 +242,7 @@
   panel.style.cssText='box-sizing:border-box;position:relative;width:100%;height:min(520px,75vh);max-height:75vh;overflow:hidden;z-index:2147483647;background:#fff;color:#172b4d;border:2px solid #0052cc;border-radius:8px;padding:14px;box-shadow:0 4px 24px #0004;font:13px Arial';
   // 使用 DOM 构建，避免站点 Trusted Types 策略拒绝 innerHTML。
   const make=(tag,text,attr,parent)=>{const x=document.createElement(tag);if(text)x.textContent=text;if(attr)x.setAttribute(attr,'');parent.append(x);return x;};
-  make('b','jiraMonitorOverview v4.8.4',null,panel);
+  make('b','jiraMonitor v5.0.0',null,panel);
   const fold=make('button','收起','data-fold',panel);fold.style.float='right';
   const body=make('div',null,'data-body',panel);
   body.style.cssText='display:flex;flex-direction:column;height:calc(100% - 24px);min-height:0';
@@ -261,7 +264,7 @@
   make('p',null,'data-progress',body);make('p',null,'data-totals',body);const resultsBox=make('div',null,'data-results',body);
   resultsBox.style.cssText='flex:1;min-height:80px;overflow-y:auto;overscroll-behavior:contain';
   mountPanel();
-  if(typeof GM_registerMenuCommand==='function') GM_registerMenuCommand('jiraMonitorOverview：显示统计面板',()=>{mountPanel();body.hidden=false;body.style.display='flex';panel.style.height=`min(${CONFIG.panelHeightPx}px,75vh)`;});
+  if(typeof GM_registerMenuCommand==='function') GM_registerMenuCommand('jiraMonitor：显示统计面板',()=>{mountPanel();body.hidden=false;body.style.display='flex';panel.style.height=`min(${CONFIG.panelHeightPx}px,75vh)`;});
   const el=s=>panel.querySelector(s);
   validateRules(CONFIG.rules);
   el('[data-config]').textContent=CONFIG.rules.map(r=>ruleText(r)).join('\n');
@@ -269,14 +272,14 @@
   function render() {
     const s=get();
     el('[data-config]').textContent=(s?.rules||CONFIG.rules).map(r=>ruleText(r)).join('\n');
-    el('[data-start]').disabled=!!s?.active;
-    el('[data-start]').textContent=s?.paused?'开始统计':keyOf(location.href)&&!onOverview()?'统计本条 Jira':'开始统计';
+    el('[data-start]').disabled=!!s?.active||teamsSending;
+    el('[data-start]').textContent=s?.paused?'开始统计':keyOf(location.href)&&!onOverview()?'重新分析':'开始统计';
     el('[data-pause]').disabled=!s?.active;
     el('[data-stop]').disabled=!s?.active&&!s?.paused;
     el('[data-teams]').disabled=!!s?.active||teamsSending||!s?.results?.some(item=>item.rules?.some(r=>Number.isFinite(r.seconds)));
     scope.disabled=!!(s?.active||s?.paused);jqlBox.disabled=scope.disabled;
     scope.hidden=!!keyOf(location.href)&&!onOverview();jqlBox.hidden=true;
-    el('[data-progress]').textContent=s ? `${s.paused?'已暂停':s.active?'运行中':'已结束/停止'} · ${s.index}/${s.queue.length} · ${s.message||''}` : (keyOf(location.href)?'点击统计本条 Jira，完成后停留在此页':'点击开始统计当前总览页');
+    el('[data-progress]').textContent=s ? `${s.paused?'已暂停':s.active?'运行中':'已结束/停止'} · ${s.index}/${s.queue.length} · ${s.message||''}` : (keyOf(location.href)?'详情页正在自动分析':'点击开始统计当前总览页');
     const box=el('[data-results]'),oldScroll=box.scrollTop;box.replaceChildren();
     if(!s){el('[data-totals]').textContent=CONFIG.rules.map(rule=>`${rule.name} 即将超期：0`).join('；');return;}
     const rules=s.rules||CONFIG.rules;
@@ -358,7 +361,7 @@
       if(automatic&&!payload.rules.some(r=>r.level==='warning'))return 'skipped';
       if(automatic){
         if(typeof GM_getValue!=='function'||typeof GM_setValue!=='function')throw new Error('请保存新版脚本并刷新以启用通知去重权限');
-        const key='jira-overview-teams-cooldown-v1:'+item.key+':'+CONFIG.teamsWebhookUrl;
+        const key='jira-monitor-teams-cooldown-v1:'+item.key+':'+CONFIG.teamsWebhookUrl;
         if(GM_getValue(key,null)?.until>Date.now())return 'suppressed';
         const hours=Number(CONFIG.notificationCooldownHours);
         if(!Number.isFinite(hours)||hours<=0)throw new Error('notificationCooldownHours 必须大于0');
@@ -366,7 +369,7 @@
       }
       await postTeams(payload);return 'submitted';
     };
-    if(typeof navigator!=='undefined'&&navigator.locks?.request)return navigator.locks.request('jira-overview-teams-notify',run);
+    if(typeof navigator!=='undefined'&&navigator.locks?.request)return navigator.locks.request('jira-monitor-teams-notify',run);
     return run();
   }
   async function autoNotifyOverview(item,rules){
@@ -456,10 +459,14 @@
     if(token===epoch)pump();
   }
   async function inspect(id,token){
-    const end=Date.now()+CONFIG.detailTimeoutSeconds*1000;let tab;
-    while(Date.now()<end){valid(id,token);tab=tabLink();if(tab)break;document.querySelector('#activitymodule')?.scrollIntoView({block:'center'});await sleep(500);}
-    if(!tab)throw new Error('未找到 History 标签');
-    tab.scrollIntoView({block:'center'});tab.click();update('已点击 History，读取状态变化的精确时间…');await sleep(1000);valid(id,token);
+    const state=valid(id,token);
+    // 批量扫描保持可见的History定位；独立详情直接使用同一REST读取和计算逻辑。
+    if(state.mode!=='single'){
+      const end=Date.now()+CONFIG.detailTimeoutSeconds*1000;let tab;
+      while(Date.now()<end){valid(id,token);tab=tabLink();if(tab)break;document.querySelector('#activitymodule')?.scrollIntoView({block:'center'});await sleep(500);}
+      if(!tab)throw new Error('未找到 History 标签');
+      tab.scrollIntoView({block:'center'});tab.click();update('已点击 History，读取状态变化的精确时间…');await sleep(1000);valid(id,token);
+    }
     // made changes 的相对时间会舍入；读取同一 History 的 REST created 时间，避免把 Yesterday/17 minutes ago 当成精确日期。
     const data=await issueHistory(keyOf(location.href));
     const s=valid(id,token),now=Date.now();
@@ -626,10 +633,24 @@
     }return rows;
   }
   function download(blob,name){const u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(u),5000);}
-  el('[data-excel]').onclick=()=>download(new Blob([makeXlsx(exportRows())],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),'jira-history-kpi.xlsx');
+  el('[data-excel]').onclick=()=>download(new Blob([makeXlsx(exportRows())],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),'jiraMonitor.xlsx');
+  let detailRoute='';
+  function autoDetail(){
+    const batch=readState(STORE);
+    if(batch?.active||batch?.paused||teamsSending)return;
+    if(!isDetail()){
+      if(detailRoute){epoch++;busy=false;detailRoute='';const previous=readState(DETAIL_STORE);if(previous?.active){previous.active=false;previous.phase='stopped';previous.message='离开详情，分析已取消';save(previous);}}
+      return;
+    }
+    const key=keyOf(location.href);if(!key||detailRoute===key)return;
+    epoch++;busy=false;detailRoute=key;
+    save({id:String(Date.now())+'-'+epoch,mode:'single',active:true,rules:JSON.parse(JSON.stringify(CONFIG.rules)),queue:[{key,summary:readSummary(),href:location.href}],index:0,results:[],phase:'reading',message:'正在自动分析 '+key});
+    render();void pump();
+  }
   addEventListener('pagehide',()=>{epoch++;busy=false;});
-  addEventListener('pageshow',()=>{epoch++;busy=false;render();setTimeout(pump,800);});
-  setInterval(()=>{if(!host.isConnected)mountPanel();if(!badge.isConnected)document.documentElement.append(badge);pump();},1500);
-  render();badge.textContent='Jira v4.8.4 已启动 · 点击显示面板';badge.onclick=()=>{mountPanel();body.hidden=false;body.style.display='flex';panel.style.height=`min(${CONFIG.panelHeightPx}px,75vh)`;};setTimeout(pump,800);
+  addEventListener('pageshow',()=>{epoch++;busy=false;autoDetail();render();setTimeout(pump,800);});
+  addEventListener('popstate',()=>{autoDetail();render();});
+  setInterval(()=>{autoDetail();if(!host.isConnected)mountPanel();if(!badge.isConnected)document.documentElement.append(badge);pump();},1500);
+  render();badge.textContent='Jira v5.0.0 已启动 · 点击显示面板';badge.onclick=()=>{mountPanel();body.hidden=false;body.style.display='flex';panel.style.height=`min(${CONFIG.panelHeightPx}px,75vh)`;};autoDetail();setTimeout(pump,800);
   } catch(error) { report(error); }
 })();
