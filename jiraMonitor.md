@@ -36,7 +36,7 @@
 | DEV | In Progress | History 第一次进入 In Progress 的精确时间 |
 | DCT | In Progress、Ready For Test、Testing | 同上 |
 
-Duration = 当前系统扫描时刻 − 起始时刻。1天=24小时，使用自然天，不扣除周末或节假日。DCT不会累计之前已完成的周期；重开并再次进入 In Progress 后从最近一轮开始。起点后的禁止状态配置也参与校验，例如出现 Completed 后不能继续计入这一轮 DCT。
+Duration = 当前系统扫描时刻 − 起始时刻。1天=24小时，使用自然天，不扣除周末或节假日。返工再次进入 In Progress 不重置首次起点；Ready For Test / Testing 的中间时间也计入。起点后的完成/取消等排除状态仍参与校验，例如出现 Completed 后该历史不继续计时。
 
 | 显示 | DEV | DCT |
 |---|---|---|
