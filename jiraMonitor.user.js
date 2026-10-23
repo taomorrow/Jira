@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Jira Monitor
 // @namespace    https://github.com/taomorrow/Jira
-// @version      5.0.6
+// @version      5.0.7
 // @description  详情自动分析、总览手动批量扫描；统一DEV/DCT、周五阈值、Excel和Teams通知
 // @match        https://jira.xpaas.lenovo.com/*
 // @sandbox      DOM
@@ -35,7 +35,7 @@
     // 自动提醒只针对即将超期；手动发送不受冷却限制。
     rules: [
       {name:'DEV', description:'In Progress-Ready For Test', minDays:4, maxDays:5, currentStatuses:['In Progress'],
-       startStatus:'In Progress', forbiddenAfterStart:['Ready For Test','Testing','Completed','Complete','SIT','Ready For UAT','UAT','Ready For Deploy','Deployed','Done','Cancelled']},
+       startStatus:'In Progress', forbiddenAfterStart:['Completed','Complete','SIT','Ready For UAT','UAT','Ready For Deploy','Deployed','Done','Cancelled']},
       {name:'DCT', description:'In Progress-( / Ready For Test / Testing)-Complete', minDays:13, maxDays:14, currentStatuses:['In Progress','Ready For Test','Testing'],
        startStatus:'In Progress', forbiddenAfterStart:['Completed','Complete','SIT','Ready For UAT','UAT','Ready For Deploy','Deployed','Done','Cancelled']},
     ],
@@ -48,11 +48,11 @@
   if (window.top !== window.self) return;
   if (!/^\/(issues|browse)(\/|$)/.test(location.pathname)) return;
   const badge=document.createElement('div');
-  badge.textContent='Jira Monitor v5.0.6 已注入，正在初始化…';
+  badge.textContent='Jira Monitor v5.0.7 已注入，正在初始化…';
   badge.style.cssText='position:fixed!important;top:8px!important;right:12px!important;z-index:2147483647!important;background:#0052cc!important;color:white!important;padding:8px!important;font:13px Arial!important;max-width:80vw!important;white-space:pre-wrap!important';
   (document.body||document.documentElement).append(badge);
   function report(error) {
-    const text='Jira Monitor v5.0.6 启动失败：'+(error?.message||error);
+    const text='Jira Monitor v5.0.7 启动失败：'+(error?.message||error);
     badge.textContent=text;badge.style.background='#ae2a19';
     (document.body||document.documentElement).append(badge);
     const box=document.createElement('div');box.textContent=text+'。请检查代码开头 CONFIG 配置。';
@@ -146,18 +146,19 @@
     return new Date(ms+8*3600000).toISOString().replace('T',' ').replace('Z',' +08:00');
   }
   function evaluateHistory(events,currentStatus,rules,now){
+    // 按绝对时间升序，从完整历史选择首次起点；返工不重置计时。
     const sorted=[...events].sort((a,b)=>a.at-b.at||a.order-b.order);
     return rules.map(originalRule=>{
       const rule=effectiveRule(originalRule,now);
       const base={name:rule.name,seconds:null,currentStatus,checkedAt:new Date(now).toISOString(),effectiveMinDays:rule.minDays,effectiveMaxDays:rule.maxDays,fridayShiftDays:rule.fridayShiftDays};
       if(!rule.currentStatuses.map(norm).includes(norm(currentStatus)))return {...base,status:'不在统计范围',details:'当前状态：'+currentStatus};
-      const index=sorted.findLastIndex(e=>norm(e.to)===norm(rule.startStatus));
+      const index=sorted.findIndex(e=>norm(e.to)===norm(rule.startStatus));
       if(index<0)return {...base,status:'未发现起始记录',details:'History 中无进入 '+rule.startStatus+' 的记录'};
       const start=sorted[index];
-      if(sorted.slice(index+1).some(e=>rule.forbiddenAfterStart.map(norm).includes(norm(e.to))))return {...base,status:'后续流程已发生',details:'最近进入 In Progress 后存在禁止的后续状态'};
+      if(sorted.slice(index+1).some(e=>rule.forbiddenAfterStart.map(norm).includes(norm(e.to))))return {...base,status:'后续流程已发生',details:'首次进入 In Progress 后存在完成或取消等排除状态'};
       if(!Number.isFinite(start.at)||start.at>now)return {...base,status:'读取失败',details:'起始时间无效或晚于当前系统时间'};
       const elapsed=(now-start.at)/1000;
-      return {...base,status:'已统计',seconds:elapsed,inRange:elapsed>=rule.minDays*86400&&elapsed<rule.maxDays*86400,startAt:new Date(start.at).toISOString(),details:'最近 New: '+rule.startStatus+'；当前系统时间减起始时间；来源：'+(start.source||'History REST 精确时间')};
+      return {...base,status:'已统计',seconds:elapsed,inRange:elapsed>=rule.minDays*86400&&elapsed<rule.maxDays*86400,startAt:new Date(start.at).toISOString(),details:'首次 New: '+rule.startStatus+'；当前系统时间减起始时间；来源：'+(start.source||'History REST 精确时间')};
     });
   }
   function makeXlsx(rows){
@@ -260,7 +261,7 @@
   panel.style.cssText='box-sizing:border-box;position:relative;width:100%;height:min(520px,75vh);max-height:75vh;overflow:hidden;z-index:2147483647;background:#fff;color:#172b4d;border:2px solid #0052cc;border-radius:8px;padding:14px;box-shadow:0 4px 24px #0004;font:13px Arial';
   // 使用 DOM 构建，避免站点 Trusted Types 策略拒绝 innerHTML。
   const make=(tag,text,attr,parent)=>{const x=document.createElement(tag);if(text)x.textContent=text;if(attr)x.setAttribute(attr,'');parent.append(x);return x;};
-  make('b','Jira Monitor v5.0.6',null,panel);
+  make('b','Jira Monitor v5.0.7',null,panel);
   const fold=make('button','收起','data-fold',panel);fold.style.float='right';
   const body=make('div',null,'data-body',panel);
   body.style.cssText='display:flex;flex-direction:column;height:calc(100% - 24px);min-height:0';
@@ -693,6 +694,6 @@
   addEventListener('pageshow',()=>{epoch++;busy=false;autoDetail();render();setTimeout(pump,800);});
   addEventListener('popstate',()=>{autoDetail();render();});
   setInterval(()=>{autoDetail();if(!host.isConnected)mountPanel();if(!badge.isConnected)document.documentElement.append(badge);pump();},1500);
-  render();badge.textContent='Jira Monitor v5.0.6 已启动 · 点击显示面板';badge.onclick=()=>{mountPanel();body.hidden=false;body.style.display='flex';panel.style.height=`min(${CONFIG.panelHeightPx}px,75vh)`;};autoDetail();setTimeout(pump,800);
+  render();badge.textContent='Jira Monitor v5.0.7 已启动 · 点击显示面板';badge.onclick=()=>{mountPanel();body.hidden=false;body.style.display='flex';panel.style.height=`min(${CONFIG.panelHeightPx}px,75vh)`;};autoDetail();setTimeout(pump,800);
   } catch(error) { report(error); }
 })();

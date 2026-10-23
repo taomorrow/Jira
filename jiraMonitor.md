@@ -2,7 +2,7 @@
 
 首次使用？请先阅读 [Tampermonkey 与脚本安装指南](INSTALL.md)。
 
-统一版脚本：详情自动分析，总览手动启动批量扫描；共用规则、Teams通知、去重、设置和Excel导出。公开版版本：5.0.6。
+统一版脚本：详情自动分析，总览手动启动批量扫描；共用规则、Teams通知、去重、设置和Excel导出。公开版版本：5.0.7。
 
 ## 安装与适用范围
 
@@ -33,7 +33,7 @@
 
 | 规则 | 当前状态范围 | 计时起点 |
 |---|---|---|
-| DEV | In Progress | History 最近一次进入 In Progress 的精确时间 |
+| DEV | In Progress | History 第一次进入 In Progress 的精确时间 |
 | DCT | In Progress、Ready For Test、Testing | 同上 |
 
 Duration = 当前系统扫描时刻 − 起始时刻。1天=24小时，使用自然天，不扣除周末或节假日。DCT不会累计之前已完成的周期；重开并再次进入 In Progress 后从最近一轮开始。起点后的禁止状态配置也参与校验，例如出现 Completed 后不能继续计入这一轮 DCT。
@@ -130,3 +130,8 @@ Duration = 当前系统扫描时刻 − 起始时刻。1天=24小时，使用自
 ## v5.0.6 Teams 设置保存验证
 
 油猴菜单 Teams 设置改为独立表单，不再使用原生 prompt/confirm。填写地址、选择自动通知开关并点击保存后，回读油猴存储验证；验证通过立即更新本页配置，无需刷新。失败显示具体原因，不再直接提示保存成功。正常更新继续保留已存 Webhook。周五红色提示去掉重复“默认”。
+
+
+## v5.0.7 首次进入 In Progress 计时
+
+DEV 与 DCT 都从完整 History 中第一次进入 In Progress 的接口精确时间开始，按扫描时间减首次起点计算。In Progress → Ready For Test / Testing → In Progress 的返工不重置计时，也不扣除中间时间。DEV 当前状态仍须为 In Progress；DCT 仍须为 In Progress / Ready For Test / Testing。首次起点后存在 Completed、Done、Cancelled 等原有排除状态时仍不统计，不改变完成/取消规则。面板、Excel、Teams 共用同一计算结果。升级后需重新分析或重新扫描，已保存的旧结果不会自动重算。
