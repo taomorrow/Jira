@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Jira Monitor
 // @namespace    https://github.com/taomorrow/Jira
-// @version      5.0.5
+// @version      5.0.6
 // @description  详情自动分析、总览手动批量扫描；统一DEV/DCT、周五阈值、Excel和Teams通知
 // @match        https://jira.xpaas.lenovo.com/*
 // @sandbox      DOM
@@ -48,11 +48,11 @@
   if (window.top !== window.self) return;
   if (!/^\/(issues|browse)(\/|$)/.test(location.pathname)) return;
   const badge=document.createElement('div');
-  badge.textContent='Jira Monitor v5.0.5 已注入，正在初始化…';
+  badge.textContent='Jira Monitor v5.0.6 已注入，正在初始化…';
   badge.style.cssText='position:fixed!important;top:8px!important;right:12px!important;z-index:2147483647!important;background:#0052cc!important;color:white!important;padding:8px!important;font:13px Arial!important;max-width:80vw!important;white-space:pre-wrap!important';
   (document.body||document.documentElement).append(badge);
   function report(error) {
-    const text='Jira Monitor v5.0.5 启动失败：'+(error?.message||error);
+    const text='Jira Monitor v5.0.6 启动失败：'+(error?.message||error);
     badge.textContent=text;badge.style.background='#ae2a19';
     (document.body||document.documentElement).append(badge);
     const box=document.createElement('div');box.textContent=text+'。请检查代码开头 CONFIG 配置。';
@@ -76,15 +76,34 @@
   function supportedWebhook(value){
     try{const u=new URL(value);return u.protocol==='https:'&&(/(^|\.)api\.powerplatform\.com$/i.test(u.hostname)||/(^|\.)logic\.azure\.com$/i.test(u.hostname));}catch{return false;}
   }
+  let settingsDialog=null;
   function configureTeams(){
-      const value=prompt('输入你的 Teams Workflow Webhook（留空停用通知）。地址仅保存在本机油猴存储中。',CONFIG.teamsWebhookUrl||'');
-      if(value===null)return;
-      const url=value.trim();
-      if(url&&!supportedWebhook(url)){alert('请使用 HTTPS 的 api.powerplatform.com 或 logic.azure.com 工作流地址。');return;}
-      const enabled=url?confirm('是否开启总览预警自动通知（即将超期/已超期）？确定：开启；取消：仅手动发送。'):false;
-      GM_setValue(WEBHOOK_SETTING,url);GM_setValue(AUTO_SETTING,enabled);
-      CONFIG.teamsWebhookUrl=url;CONFIG.autoNotifyApproaching=enabled;
-      alert('配置已保存，请刷新 Jira 页面生效。');
+    if(settingsDialog){settingsDialog.remove();settingsDialog=null;}
+    const overlay=document.createElement('div');settingsDialog=overlay;
+    overlay.style.cssText='position:fixed;inset:0;z-index:2147483647;background:#0005;display:flex;align-items:center;justify-content:center';
+    const shadow=overlay.attachShadow({mode:'open'});
+    const box=document.createElement('div');box.style.cssText='background:white;color:#172b4d;padding:20px;border-radius:8px;width:460px;max-width:85vw;font:14px Arial;box-shadow:0 4px 24px #0006';shadow.append(box);
+    const add=(tag,text)=>{const x=document.createElement(tag);if(text)x.textContent=text;box.append(x);return x;};
+    add('b','Jira Monitor · Teams 设置');
+    add('p','Webhook 仅保存在当前脚本的油猴存储中；保存后本页立即生效。留空可停用通知。');
+    const input=add('textarea');input.setAttribute('data-webhook-input','');input.value=CONFIG.teamsWebhookUrl||'';input.rows=5;input.style.cssText='width:100%;box-sizing:border-box;overflow-wrap:anywhere';
+    const label=add('label');label.style.cssText='display:block;margin:12px 0';
+    const auto=document.createElement('input');auto.type='checkbox';auto.checked=CONFIG.autoNotifyApproaching;auto.setAttribute('data-auto-input','');label.append(auto,document.createTextNode('开启总览预警自动通知（详情仍仅手动发送）'));
+    const message=add('p');message.setAttribute('data-settings-message','');message.style.color='#ae2a19';
+    const saveButton=add('button','保存');saveButton.setAttribute('data-settings-save','');
+    const close=add('button','关闭');close.style.marginLeft='8px';close.onclick=()=>{overlay.remove();settingsDialog=null;};
+    saveButton.onclick=()=>{
+      const url=input.value.trim();
+      if(url&&!supportedWebhook(url)){message.textContent='地址无效：请填写 HTTPS 的 api.powerplatform.com 或 logic.azure.com 工作流地址。';return;}
+      const enabled=!!url&&auto.checked;
+      try{
+        GM_setValue(WEBHOOK_SETTING,url);GM_setValue(AUTO_SETTING,enabled);
+        if(GM_getValue(WEBHOOK_SETTING,null)!==url||GM_getValue(AUTO_SETTING,null)!==enabled)throw new Error('存储回读不一致');
+        CONFIG.teamsWebhookUrl=url;CONFIG.autoNotifyApproaching=enabled;render();
+        message.style.color='#00875a';message.textContent='已保存并验证，本页立即生效。'+(url?'目标域名：'+new URL(url).hostname:'通知已停用。');
+      }catch(error){message.style.color='#ae2a19';message.textContent='保存失败，请确认油猴存储权限后重试：'+safeError(error);}
+    };
+    (document.body||document.documentElement).append(overlay);
   }
   if(typeof GM_registerMenuCommand==='function')GM_registerMenuCommand('Jira Monitor：Teams 设置',configureTeams);
 
@@ -241,7 +260,7 @@
   panel.style.cssText='box-sizing:border-box;position:relative;width:100%;height:min(520px,75vh);max-height:75vh;overflow:hidden;z-index:2147483647;background:#fff;color:#172b4d;border:2px solid #0052cc;border-radius:8px;padding:14px;box-shadow:0 4px 24px #0004;font:13px Arial';
   // 使用 DOM 构建，避免站点 Trusted Types 策略拒绝 innerHTML。
   const make=(tag,text,attr,parent)=>{const x=document.createElement(tag);if(text)x.textContent=text;if(attr)x.setAttribute(attr,'');parent.append(x);return x;};
-  make('b','Jira Monitor v5.0.5',null,panel);
+  make('b','Jira Monitor v5.0.6',null,panel);
   const fold=make('button','收起','data-fold',panel);fold.style.float='right';
   const body=make('div',null,'data-body',panel);
   body.style.cssText='display:flex;flex-direction:column;height:calc(100% - 24px);min-height:0';
@@ -674,6 +693,6 @@
   addEventListener('pageshow',()=>{epoch++;busy=false;autoDetail();render();setTimeout(pump,800);});
   addEventListener('popstate',()=>{autoDetail();render();});
   setInterval(()=>{autoDetail();if(!host.isConnected)mountPanel();if(!badge.isConnected)document.documentElement.append(badge);pump();},1500);
-  render();badge.textContent='Jira Monitor v5.0.5 已启动 · 点击显示面板';badge.onclick=()=>{mountPanel();body.hidden=false;body.style.display='flex';panel.style.height=`min(${CONFIG.panelHeightPx}px,75vh)`;};autoDetail();setTimeout(pump,800);
+  render();badge.textContent='Jira Monitor v5.0.6 已启动 · 点击显示面板';badge.onclick=()=>{mountPanel();body.hidden=false;body.style.display='flex';panel.style.height=`min(${CONFIG.panelHeightPx}px,75vh)`;};autoDetail();setTimeout(pump,800);
   } catch(error) { report(error); }
 })();
