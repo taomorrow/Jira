@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Jira Monitor
 // @namespace    https://github.com/taomorrow/Jira
-// @version      5.0.3
+// @version      5.0.4
 // @description  详情自动分析、总览手动批量扫描；统一DEV/DCT、周五阈值、Excel和Teams通知
 // @match        https://jira.xpaas.lenovo.com/*
 // @sandbox      DOM
@@ -48,11 +48,11 @@
   if (window.top !== window.self) return;
   if (!/^\/(issues|browse)(\/|$)/.test(location.pathname)) return;
   const badge=document.createElement('div');
-  badge.textContent='Jira Monitor v5.0.3 已注入，正在初始化…';
+  badge.textContent='Jira Monitor v5.0.4 已注入，正在初始化…';
   badge.style.cssText='position:fixed!important;top:8px!important;right:12px!important;z-index:2147483647!important;background:#0052cc!important;color:white!important;padding:8px!important;font:13px Arial!important;max-width:80vw!important;white-space:pre-wrap!important';
   (document.body||document.documentElement).append(badge);
   function report(error) {
-    const text='Jira Monitor v5.0.3 启动失败：'+(error?.message||error);
+    const text='Jira Monitor v5.0.4 启动失败：'+(error?.message||error);
     badge.textContent=text;badge.style.background='#ae2a19';
     (document.body||document.documentElement).append(badge);
     const box=document.createElement('div');box.textContent=text+'。请检查代码开头 CONFIG 配置。';
@@ -78,7 +78,7 @@
       if(value===null)return;
       const url=value.trim();
       if(url&&!supportedWebhook(url)){alert('请使用 HTTPS 的 api.powerplatform.com 或 logic.azure.com 工作流地址。');return;}
-      const enabled=url?confirm('是否开启“即将超期”自动通知？确定：开启；取消：仅手动发送。'):false;
+      const enabled=url?confirm('是否开启总览预警自动通知（即将超期/已超期）？确定：开启；取消：仅手动发送。'):false;
       GM_setValue(WEBHOOK_SETTING,url);GM_setValue(AUTO_SETTING,enabled);
       CONFIG.teamsWebhookUrl=url;CONFIG.autoNotifyApproaching=enabled;
       alert('配置已保存，请刷新 Jira 页面生效。');
@@ -109,7 +109,8 @@
   }
   const ruleText=(base,scanTime=Date.now())=>{
     const r=effectiveRule(base,scanTime);
-    return `${r.name}: ${r.description||r.currentStatuses.join(' / ')}｜ ${r.minDays}≤天数<${r.maxDays} 即将超期；≥${r.maxDays}天 已超期${r.fridayShiftDays?'（周五提前'+r.fridayShiftDays+'天）':''}`;
+    // 用户要求仅调整展示起点，实际判断继续使用 minDays，不改计算边界。
+    return `${r.name}｜即将超期：${r.minDays+0.5}≤天数＜${r.maxDays}；已超期：≥${r.maxDays} 天；`;
   };
   function panelDuration(result,rule){
     rule=resultRule(result,rule);
@@ -241,7 +242,7 @@
   panel.style.cssText='box-sizing:border-box;position:relative;width:100%;height:min(520px,75vh);max-height:75vh;overflow:hidden;z-index:2147483647;background:#fff;color:#172b4d;border:2px solid #0052cc;border-radius:8px;padding:14px;box-shadow:0 4px 24px #0004;font:13px Arial';
   // 使用 DOM 构建，避免站点 Trusted Types 策略拒绝 innerHTML。
   const make=(tag,text,attr,parent)=>{const x=document.createElement(tag);if(text)x.textContent=text;if(attr)x.setAttribute(attr,'');parent.append(x);return x;};
-  make('b','Jira Monitor v5.0.3',null,panel);
+  make('b','Jira Monitor v5.0.4',null,panel);
   const fold=make('button','收起','data-fold',panel);fold.style.float='right';
   const body=make('div',null,'data-body',panel);
   body.style.cssText='display:flex;flex-direction:column;height:calc(100% - 24px);min-height:0';
@@ -259,7 +260,7 @@
   make('button','停止','data-stop',actions);
   make('button','导出 Excel','data-excel',actions);
   make('button','发送 Teams','data-teams',actions);
-  make('button','Teams 设置','data-teams-settings',actions).onclick=configureTeams;
+  // Teams 设置保留在油猴菜单，面板仅展示发送按钮。
   make('p',null,'data-notice',body).style.cssText='white-space:pre-wrap;overflow-wrap:anywhere;max-height:100px;overflow-y:auto';
   make('p',null,'data-teams-status',body).style.cssText='font-size:12px;color:#5e6c84';
   const errorBox=make('pre',null,'data-teams-errors',body);errorBox.hidden=true;errorBox.style.cssText='white-space:pre-wrap;overflow-wrap:anywhere;flex-shrink:0;max-height:130px;overflow-y:auto;color:#ae2a19;background:#fff1f0;padding:7px;font:12px Arial';
@@ -273,7 +274,7 @@
   let busy=false, epoch=0;
   function render() {
     const s=get();
-    el('[data-teams-status]').textContent='Teams：'+(CONFIG.teamsWebhookUrl?'已配置':'未配置')+' · 自动通知'+(CONFIG.autoNotifyApproaching?'开启':'关闭');
+    el('[data-teams-status]').textContent='Teams：'+(CONFIG.teamsWebhookUrl?'已配置':'未配置')+' · 自动通知'+(s?.mode==='single'?'关闭（详情仅手动发送）':CONFIG.autoNotifyApproaching?'开启':'关闭');
     el('[data-config]').textContent=(s?.rules||CONFIG.rules).map(r=>ruleText(r)).join('\n');
     el('[data-start]').disabled=!!s?.active||teamsSending;
     el('[data-start]').textContent=s?.paused?'开始统计':keyOf(location.href)&&!onOverview()?'重新分析':'开始统计';
@@ -350,7 +351,7 @@
   }
   function postTeams(payload){
     return new Promise((resolve,reject)=>{
-      if(!CONFIG.teamsWebhookUrl){reject(new Error('未配置 Webhook：点击面板上的「Teams 设置」'));return;}
+      if(!CONFIG.teamsWebhookUrl){reject(new Error('未配置 Webhook：打开油猴菜单「Jira Monitor：Teams 设置」'));return;}
       if(!supportedWebhook(CONFIG.teamsWebhookUrl)){reject(new Error('Webhook 地址不受支持，请重新配置'));return;}
       if(typeof GM_xmlhttpRequest!=='function'){reject(new Error('GM_xmlhttpRequest 不可用，请确认只启用一份 Jira Monitor 并重新保存脚本权限'));return;}
       try{GM_xmlhttpRequest({method:'POST',url:CONFIG.teamsWebhookUrl,headers:{'Content-Type':'application/json'},data:JSON.stringify(payload),timeout:30000,anonymous:true,
@@ -373,10 +374,11 @@
   function notice(text){el('[data-notice]').textContent=text;}
   async function sendOverviewItem(item,rules,automatic){
     const run=async()=>{
-      const payload=teamsPayload(item,rules,automatic);
+      const detail=get()?.mode==='single';
+      if(automatic&&detail)return 'skipped';
+      const payload=teamsPayload(item,rules,!detail);
       if(!payload.rules.length)return 'skipped';
       if(automatic&&(!CONFIG.autoNotifyApproaching||!CONFIG.teamsWebhookUrl))return 'skipped';
-      if(automatic&&!payload.rules.some(r=>r.level==='warning'))return 'skipped';
       if(automatic){
         if(typeof GM_getValue!=='function'||typeof GM_setValue!=='function')throw new Error('请保存新版脚本并刷新以启用通知去重权限');
         const key='jira-monitor-teams-cooldown-v1:'+item.key+':'+CONFIG.teamsWebhookUrl;
@@ -398,15 +400,15 @@
     const s=get();if(teamsSending||s?.active)return;
     const items=(s?.results||[]).filter(item=>item.rules?.some(r=>Number.isFinite(r.seconds)));
     if(!items.length){notice('没有有效计时结果，无需发送');return;}
-    if(!CONFIG.teamsWebhookUrl){const text='未发送：点击面板「Teams 设置」填写 Webhook，保存后刷新页面';notice(text);showTeamsError(text);return;}
+    if(!CONFIG.teamsWebhookUrl){const text='未发送：打开油猴菜单「Jira Monitor：Teams 设置」填写 Webhook，保存后刷新页面';notice(text);showTeamsError(text);return;}
     if(!supportedWebhook(CONFIG.teamsWebhookUrl)){const text='未发送：Webhook 地址不受支持，请通过「Teams 设置」重新配置';notice(text);showTeamsError(text);return;}
     el('[data-teams-errors]').hidden=true;el('[data-teams-errors]').textContent='';
-    teamsSending=true;render();let success=0,failed=0;const errors=[];
+    teamsSending=true;render();let success=0,failed=0,skipped=0;const errors=[];
     for(const item of items){
       notice('正在发送 '+item.key+'…');
-      try{await sendOverviewItem(item,s.rules||CONFIG.rules,false);success++;}catch(error){failed++;errors.push(item.key+'：'+safeError(error));notice(errors[errors.length-1]);showTeamsError(errors.join('\n'));}
+      try{const state=await sendOverviewItem(item,s.rules||CONFIG.rules,false);if(state==='submitted')success++;else skipped++;}catch(error){failed++;errors.push(item.key+'：'+safeError(error));notice(errors[errors.length-1]);showTeamsError(errors.join('\n'));}
     }
-    teamsSending=false;notice('Teams 已提交 '+success+' 条，失败 '+failed+' 条（工作流接收不代表投递完成）'+(errors.length?'\n'+errors.join('\n'):''));render();
+    teamsSending=false;notice('Teams 已提交 '+success+' 条，失败 '+failed+' 条，跳过 '+skipped+' 条（工作流接收不代表投递完成）'+(errors.length?'\n'+errors.join('\n'):''));render();
   };
   function update(message) {const s=get();if(s?.active){s.message=message;save(s);render();}}
   function valid(id, token) { const s=get();if(!s?.active || s.id!==id || token!==epoch)throw new Error('CANCELLED');return s; }
@@ -672,6 +674,6 @@
   addEventListener('pageshow',()=>{epoch++;busy=false;autoDetail();render();setTimeout(pump,800);});
   addEventListener('popstate',()=>{autoDetail();render();});
   setInterval(()=>{autoDetail();if(!host.isConnected)mountPanel();if(!badge.isConnected)document.documentElement.append(badge);pump();},1500);
-  render();badge.textContent='Jira Monitor v5.0.3 已启动 · 点击显示面板';badge.onclick=()=>{mountPanel();body.hidden=false;body.style.display='flex';panel.style.height=`min(${CONFIG.panelHeightPx}px,75vh)`;};autoDetail();setTimeout(pump,800);
+  render();badge.textContent='Jira Monitor v5.0.4 已启动 · 点击显示面板';badge.onclick=()=>{mountPanel();body.hidden=false;body.style.display='flex';panel.style.height=`min(${CONFIG.panelHeightPx}px,75vh)`;};autoDetail();setTimeout(pump,800);
   } catch(error) { report(error); }
 })();
