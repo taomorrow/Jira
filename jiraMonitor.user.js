@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Jira Monitor
 // @namespace    https://github.com/taomorrow/Jira
-// @version      5.2.0
+// @version      5.3.0
 // @description  详情自动分析、总览手动批量扫描；统一DEV/DCT、周五阈值、Excel和Teams通知
 // @match        https://jira.xpaas.lenovo.com/*
 // @sandbox      DOM
@@ -49,11 +49,11 @@
   const isDashboard=()=>/^\/secure\/Dashboard\.jspa$/i.test(location.pathname);
   if (!/^\/(issues|browse)(\/|$)/.test(location.pathname)&&!isDashboard()) return;
   const badge=document.createElement('div');
-  badge.textContent='Jira Monitor v5.2.0 已注入，正在初始化…';
+  badge.textContent='Jira Monitor v5.3.0 已注入，正在初始化…';
   badge.style.cssText='position:fixed!important;top:8px!important;right:12px!important;z-index:2147483647!important;background:#0052cc!important;color:white!important;padding:8px!important;font:13px Arial!important;max-width:80vw!important;white-space:pre-wrap!important';
   (document.body||document.documentElement).append(badge);
   function report(error) {
-    const text='Jira Monitor v5.2.0 启动失败：'+(error?.message||error);
+    const text='Jira Monitor v5.3.0 启动失败：'+(error?.message||error);
     badge.textContent=text;badge.style.background='#ae2a19';
     (document.body||document.documentElement).append(badge);
     const box=document.createElement('div');box.textContent=text+'。请检查代码开头 CONFIG 配置。';
@@ -108,6 +108,47 @@
   }
   if(typeof GM_registerMenuCommand==='function')GM_registerMenuCommand('Jira Monitor：Teams 设置',configureTeams);
 
+  const EMAIL_SETTING='jira-monitor-email-v1';
+  function parseEmailRecipients(value){
+    const entries=String(value||'').split(/[\s,;，；]+/).filter(Boolean),seen=new Set(),result=[];
+    for(const email of entries){
+      if(!/^[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9](?:[A-Z0-9-]*[A-Z0-9])?(?:\.[A-Z0-9](?:[A-Z0-9-]*[A-Z0-9])?)+$/i.test(email))throw Error('邮箱格式无效：'+email);
+      const key=email.toLowerCase();if(!seen.has(key)){seen.add(key);result.push(email);}
+    }
+    return result;
+  }
+  function emailConfig(){
+    const value=GM_getValue(EMAIL_SETTING,{enabled:false,recipients:[]});
+    return {enabled:value?.enabled===true,recipients:parseEmailRecipients(Array.isArray(value?.recipients)?value.recipients.join(';'):'')};
+  }
+  function configureEmail(){
+    let settings;try{settings=emailConfig();}catch{settings={enabled:false,recipients:[]};}
+    const overlay=document.createElement('div');overlay.style.cssText='position:fixed;inset:0;z-index:2147483647;background:#0005;display:flex;align-items:center;justify-content:center';
+    const shadow=overlay.attachShadow({mode:'open'}),box=document.createElement('div');box.style.cssText='background:white;color:#172b4d;padding:20px;border-radius:8px;width:460px;max-width:85vw;font:14px Arial';shadow.append(box);
+    const add=(tag,text,attr)=>{const x=document.createElement(tag);if(text)x.textContent=text;if(attr)x.setAttribute(attr,'');box.append(x);return x;};
+    add('b','Jira Monitor · 邮件设置');
+    add('p','通过现有 Webhook 工作流发送邮件，需先在 Power Automate 添加邮件步骤。启用后，手动通知和自动通知请求会附带以下收件人；不会在保存时发送。');
+    const label=add('label');const enabled=document.createElement('input');enabled.type='checkbox';enabled.checked=settings.enabled;enabled.setAttribute('data-email-enabled','');label.append(enabled,document.createTextNode('启用邮件通知'));
+    add('p','收件邮箱（可维护多个，每行一个，或用分号/逗号分隔；所有收件人可见 To 列表）');
+    const recipients=add('textarea',null,'data-email-recipients');recipients.value=settings.recipients.join('\n');recipients.rows=6;recipients.style.cssText='width:100%;box-sizing:border-box';
+    const status=add('p',null,'data-email-status');
+    const saveButton=add('button','保存','data-email-save'),close=add('button','关闭');close.style.marginLeft='8px';close.onclick=()=>overlay.remove();
+    saveButton.onclick=()=>{try{
+      const emails=parseEmailRecipients(recipients.value);if(enabled.checked&&!emails.length)throw Error('启用邮件时至少填写一个收件邮箱');
+      const value={enabled:enabled.checked,recipients:emails};GM_setValue(EMAIL_SETTING,value);
+      if(JSON.stringify(GM_getValue(EMAIL_SETTING,null))!==JSON.stringify(value))throw Error('配置回读失败');
+      recipients.value=emails.join('\n');status.style.color='#00875a';status.textContent='已保存并验证，'+emails.length+' 个邮箱；'+(value.enabled?'下次通知请求附带邮件内容。工作流须配置邮件步骤。':'邮件已停用，保留收件人。');
+    }catch(error){status.style.color='#ae2a19';status.textContent='保存失败：'+safeError(error);}};
+    (document.body||document.documentElement).append(overlay);
+  }
+  if(typeof GM_registerMenuCommand==='function')GM_registerMenuCommand('Jira Monitor：邮件设置',configureEmail);
+  function emailPayload(current,rules,text,jiraUrl){
+    const settings=emailConfig();
+    if(!settings.enabled)return {enabled:false};
+    if(!settings.recipients.length)throw Error('邮件已启用但收件人为空，请打开邮件设置');
+    const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    return {enabled:true,recipients:settings.recipients,to:settings.recipients.join(';'),subject:'[Jira Monitor] '+String(current.key).replace(/[\r\n]/g,'')+' · '+rules.map(r=>r.name+' '+r.sla).join(' / '),bodyText:text,bodyHtml:'<div style="font-family:Arial,sans-serif"><h2>'+esc(current.key)+'</h2><p>'+esc(current.summary)+'</p><p>负责人：'+esc(current.assignee)+'</p>'+rules.map(r=>'<p>'+esc(r.name+'：'+r.sla+' · '+r.days.toFixed(2)+'天')+'</p>').join('')+'<p>扫描时间：'+esc(beijingTime(current.checkedAt))+'</p><p><a href="'+esc(jiraUrl)+'">打开 Jira</a></p></div>'};
+  }
   const norm=s=>String(s||'').replace(/[_\s-]+/g,' ').trim().toUpperCase();
   function validateRules(rules){
     const names=new Set();
@@ -262,7 +303,7 @@
   panel.style.cssText='box-sizing:border-box;position:relative;width:100%;height:min(520px,75vh);max-height:75vh;overflow:hidden;z-index:2147483647;background:#fff;color:#172b4d;border:2px solid #0052cc;border-radius:8px;padding:14px;box-shadow:0 4px 24px #0004;font:13px Arial';
   // 使用 DOM 构建，避免站点 Trusted Types 策略拒绝 innerHTML。
   const make=(tag,text,attr,parent)=>{const x=document.createElement(tag);if(text)x.textContent=text;if(attr)x.setAttribute(attr,'');parent.append(x);return x;};
-  make('b','Jira Monitor v5.2.0',null,panel);
+  make('b','Jira Monitor v5.3.0',null,panel);
   const fold=make('button','收起','data-fold',panel);fold.style.float='right';
   const body=make('div',null,'data-body',panel);
   body.style.cssText='display:flex;flex-direction:column;height:calc(100% - 24px);min-height:0';
@@ -355,7 +396,7 @@
     const mentionName=mention?String(mention.name||current.assignee).replace(/[<>]/g,''):'';
     const mentionText=mention?'<at>'+mentionName+'</at>':'';
     const text=[current.key,current.summary,'负责人：'+current.assignee,...rules.map(r=>r.name+'：'+r.sla+' · '+r.days.toFixed(2)+'天'),jiraUrl,'扫描时间：'+beijingTime(current.checkedAt)].join('\n');
-    return {type:'message',text,jiraKey:current.key,jiraUrl,summary:current.summary,assignee:current.assignee,assigneeAccount:current.assigneeAccount,assigneeEmail,currentStatus:current.currentStatus,scanTime:beijingTime(current.checkedAt),rules,
+    return {type:'message',text,email:emailPayload(current,rules,text,jiraUrl),jiraKey:current.key,jiraUrl,summary:current.summary,assignee:current.assignee,assigneeAccount:current.assigneeAccount,assigneeEmail,currentStatus:current.currentStatus,scanTime:beijingTime(current.checkedAt),rules,
       attachments:[{contentType:'application/vnd.microsoft.card.adaptive',contentUrl:null,content:{'$schema':'http://adaptivecards.io/schemas/adaptive-card.json',type:'AdaptiveCard',version:'1.2',msteams:{entities:mention?[{type:'mention',text:mentionText,mentioned:{id:mention.id,name:mentionName}}]:[]},body:[
         {type:'TextBlock',text:current.key,weight:'Bolder',size:'Medium',wrap:true},
         {type:'TextBlock',text:current.summary,wrap:true},
@@ -798,6 +839,6 @@
   addEventListener('pageshow',()=>{epoch++;busy=false;autoDetail();render();setTimeout(pump,800);});
   addEventListener('popstate',()=>{autoDetail();render();});
   setInterval(()=>{autoDetail();if(!host.isConnected)mountPanel();if(!badge.isConnected)document.documentElement.append(badge);pump();void jobTick();},1500);
-  render();badge.textContent='Jira Monitor v5.2.0 已启动 · 点击显示面板';badge.onclick=()=>{mountPanel();body.hidden=false;body.style.display='flex';panel.style.height=`min(${CONFIG.panelHeightPx}px,75vh)`;};autoDetail();setTimeout(pump,800);
+  render();badge.textContent='Jira Monitor v5.3.0 已启动 · 点击显示面板';badge.onclick=()=>{mountPanel();body.hidden=false;body.style.display='flex';panel.style.height=`min(${CONFIG.panelHeightPx}px,75vh)`;};autoDetail();setTimeout(pump,800);
   } catch(error) { report(error); }
 })();
