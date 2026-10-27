@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Jira Monitor
 // @namespace    https://github.com/taomorrow/Jira
-// @version      5.1.0
+// @version      5.2.0
 // @description  详情自动分析、总览手动批量扫描；统一DEV/DCT、周五阈值、Excel和Teams通知
 // @match        https://jira.xpaas.lenovo.com/*
 // @sandbox      DOM
@@ -46,13 +46,14 @@
   };
   // ================= 规则配置结束 =================
   if (window.top !== window.self) return;
-  if (!/^\/(issues|browse)(\/|$)/.test(location.pathname)) return;
+  const isDashboard=()=>/^\/secure\/Dashboard\.jspa$/i.test(location.pathname);
+  if (!/^\/(issues|browse)(\/|$)/.test(location.pathname)&&!isDashboard()) return;
   const badge=document.createElement('div');
-  badge.textContent='Jira Monitor v5.1.0 已注入，正在初始化…';
+  badge.textContent='Jira Monitor v5.2.0 已注入，正在初始化…';
   badge.style.cssText='position:fixed!important;top:8px!important;right:12px!important;z-index:2147483647!important;background:#0052cc!important;color:white!important;padding:8px!important;font:13px Arial!important;max-width:80vw!important;white-space:pre-wrap!important';
   (document.body||document.documentElement).append(badge);
   function report(error) {
-    const text='Jira Monitor v5.1.0 启动失败：'+(error?.message||error);
+    const text='Jira Monitor v5.2.0 启动失败：'+(error?.message||error);
     badge.textContent=text;badge.style.background='#ae2a19';
     (document.body||document.documentElement).append(badge);
     const box=document.createElement('div');box.textContent=text+'。请检查代码开头 CONFIG 配置。';
@@ -261,7 +262,7 @@
   panel.style.cssText='box-sizing:border-box;position:relative;width:100%;height:min(520px,75vh);max-height:75vh;overflow:hidden;z-index:2147483647;background:#fff;color:#172b4d;border:2px solid #0052cc;border-radius:8px;padding:14px;box-shadow:0 4px 24px #0004;font:13px Arial';
   // 使用 DOM 构建，避免站点 Trusted Types 策略拒绝 innerHTML。
   const make=(tag,text,attr,parent)=>{const x=document.createElement(tag);if(text)x.textContent=text;if(attr)x.setAttribute(attr,'');parent.append(x);return x;};
-  make('b','Jira Monitor v5.1.0',null,panel);
+  make('b','Jira Monitor v5.2.0',null,panel);
   const fold=make('button','收起','data-fold',panel);fold.style.float='right';
   const body=make('div',null,'data-body',panel);
   body.style.cssText='display:flex;flex-direction:column;height:calc(100% - 24px);min-height:0';
@@ -302,7 +303,7 @@
     el('[data-stop]').disabled=!s?.active&&!s?.paused;
     el('[data-teams]').disabled=!!s?.active||teamsSending||!s?.results?.some(item=>item.rules?.some(r=>Number.isFinite(r.seconds)));
     scope.disabled=!!(s?.active||s?.paused);jqlBox.disabled=scope.disabled;
-    scope.hidden=!!keyOf(location.href)&&!onOverview();jqlBox.hidden=true;
+    scope.hidden=isDashboard()||!!keyOf(location.href)&&!onOverview();jqlBox.hidden=true;
     el('[data-progress]').textContent=s ? `${s.paused?'已暂停':s.active?'运行中':'已结束/停止'} · ${s.index}/${s.queue.length} · ${s.message||''}` : (keyOf(location.href)?'详情页正在自动分析':'点击开始统计当前总览页');
     const box=el('[data-results]'),oldScroll=box.scrollTop;box.replaceChildren();
     if(!s){el('[data-totals]').textContent=CONFIG.rules.map(rule=>`${rule.name} 即将超期：0`).join('；');return;}
@@ -438,7 +439,7 @@
     try{const res=await fetch(path,{...options,credentials:'same-origin',headers:{Accept:'application/json',...(options.headers||{})},signal:controller.signal});if(!res.ok)throw new Error('Jira HTTP '+res.status);return await res.json();}finally{clearTimeout(timer);}
   }
   async function issueHistory(key){
-    const data=await api('/rest/api/2/issue/'+encodeURIComponent(key)+'?fields=assignee,status,summary&expand=changelog');
+    const data=await api('/rest/api/2/issue/'+encodeURIComponent(key)+'?fields=assignee,status,summary,issuetype&expand=changelog');
     let histories=data.changelog?.histories;
     if(!Array.isArray(histories))throw new Error('接口未返回 changelog');
     const total=data.changelog.total;
@@ -464,7 +465,7 @@
     }
     const fields=data.fields||{};
     if(!fields.status?.name)throw new Error('无法读取当前状态');
-    return {events,assigneeEmail:fields.assignee?.emailAddress||'',assigneeAccount:fields.assignee?.name||fields.assignee?.key||fields.assignee?.accountId||'',status:fields.status.name,assignee:fields.assignee===null?'未分配':fields.assignee?.displayName||'',summary:fields.summary||'',source:'Jira History REST fetch 精确时间'};
+    return {events,issueType:fields.issuetype?.name||'',assigneeEmail:fields.assignee?.emailAddress||'',assigneeAccount:fields.assignee?.name||fields.assignee?.key||fields.assignee?.accountId||'',status:fields.status.name,assignee:fields.assignee===null?'未分配':fields.assignee?.displayName||'',summary:fields.summary||'',source:'Jira History REST fetch 精确时间'};
   }
   async function allIssues(id,token){
     const checkpoint=valid(id,token).collection;
@@ -476,7 +477,7 @@
     const initial=valid(id,token);initial.collection={jql,startAt,total,issues:[...found.values()]};save(initial);
     while(total===null||startAt<total){
       valid(id,token);
-      const page=await api('/rest/api/2/search',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jql,startAt,maxResults:100,fields:['summary','status','assignee']})});
+      const page=await api('/rest/api/2/search',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jql,startAt,maxResults:100,fields:['summary','status','assignee','issuetype']})});
       valid(id,token);
       if(!Array.isArray(page.issues)||!Number.isInteger(page.total))throw new Error('搜索分页返回格式异常');
       if(total!==null&&total!==page.total)throw new Error('收集时筛选数量变化，请重新扫描');total=page.total;
@@ -488,7 +489,8 @@
     }
     if(found.size!==total)throw new Error('搜索分页存在重复或遗漏，请重试');
     const rules=valid(id,token).rules;
-    const queue=[...found.values()].filter(x=>rules.some(r=>r.currentStatuses.map(norm).includes(norm(x.fields?.status?.name)))).map(x=>({key:x.key,summary:x.fields?.summary||'',currentStatus:x.fields?.status?.name||'',assignee:x.fields?.assignee===null?'未分配':x.fields?.assignee?.displayName||'',href:location.origin+'/browse/'+x.key}));
+    const storyOnly=valid(id,token).storyOnly;
+    const queue=[...found.values()].filter(x=>(!storyOnly||norm(x.fields?.issuetype?.name)==='STORY')&&rules.some(r=>r.currentStatuses.map(norm).includes(norm(x.fields?.status?.name)))).map(x=>({key:x.key,summary:x.fields?.summary||'',currentStatus:x.fields?.status?.name||'',assignee:x.fields?.assignee===null?'未分配':x.fields?.assignee?.displayName||'',href:location.origin+'/browse/'+x.key}));
     return {queue,total,jql};
   }
   async function continueCollection(){
@@ -514,6 +516,41 @@
     const data=await issueHistory(keyOf(location.href));
     const s=valid(id,token),now=Date.now();
     return {checkedAt:now,assigneeEmail:data.assigneeEmail,assigneeAccount:data.assigneeAccount,rules:evaluateHistory(data.events,data.status,s.rules,now),assignee:data.assignee||readAssignee()||s.queue[s.index]?.assignee||'',summary:data.summary,currentStatus:data.status,source:data.source};
+  }
+  function dashboardIssues(){
+    const found=new Map(),visited=new Set();
+    const walk=doc=>{
+      if(!doc||visited.has(doc))return;visited.add(doc);
+      for(const link of doc.querySelectorAll('a[href*="/browse/"]')){
+        try{const url=new URL(link.href,location.href),key=keyOf(url.href);
+          if(url.origin!==location.origin||!key)continue;
+          if(!found.has(key))found.set(key,{key,href:url.href,summary:link.textContent?.trim()||key});
+        }catch{}
+      }
+      for(const frame of doc.querySelectorAll('iframe')){try{walk(frame.contentDocument);}catch{}}
+    };walk(document);return [...found.values()];
+  }
+  async function scanDashboard(previous){
+    const queue=previous?.paused?previous.queue:dashboardIssues();
+    if(!queue.length){notice('Dashboard 未发现已加载的工单链接；请等待小组件加载，或翻到有工单的分页后重试');return;}
+    epoch++;const token=epoch;
+    const state=previous?.paused?{...previous,active:true,paused:false,jobDirect:true}:{id:'dashboard-'+Date.now(),mode:'batch',dashboardScan:true,jobDirect:true,active:true,rules:JSON.parse(JSON.stringify(CONFIG.rules)),queue,index:0,results:[],skipped:0,listUrl:location.href};
+    state.phase='reading';save(state);render();
+    try{
+      while(state.index<state.queue.length){
+        valid(state.id,token);const item=state.queue[state.index];let data;
+        try{data=await issueHistory(item.key);}catch(error){valid(state.id,token);throw Error(item.key+'：'+safeError(error));}
+        valid(state.id,token);
+        // 类型由 Jira 接口核验，缺失类型也不得计入 Story。
+        if(norm(data.issueType)!=='STORY'){state.skipped=(state.skipped||0)+1;}
+        else{
+          const now=Date.now();state.results.push({...item,summary:data.summary,assignee:data.assignee,assigneeEmail:data.assigneeEmail,assigneeAccount:data.assigneeAccount,currentStatus:data.status,checkedAt:now,rules:evaluateHistory(data.events,data.status,state.rules,now)});
+          await autoNotifyOverview(state.results.at(-1),state.rules);valid(state.id,token);
+        }
+        state.index++;state.message='Dashboard：仅 Story；跳过非 Story/类型未知 '+state.skipped+' 条';save(state);render();
+      }
+      state.active=false;state.jobDirect=false;state.phase='done';state.message='Dashboard 已加载工单扫描完成；仅 Story，跳过 '+state.skipped+' 条（不含未加载的小组件分页）';save(state);render();
+    }catch(error){if(error.message!=='CANCELLED'){const s=get();if(s?.id===state.id){s.active=false;s.paused=true;s.message='Dashboard 扫描失败：'+safeError(error);save(s);render();}}}
   }
   function onOverview(){
     return /^\/issues(?:\/|$)/.test(location.pathname)&&!!document.querySelector('#issuetable, .issue-table, [data-testid="issue-table"]');
@@ -632,6 +669,7 @@
   scope.onchange=render;
   el('[data-start]').onclick=async()=>{
     const previous=get();if(previous?.active||teamsSending)return;
+    if(isDashboard()){await scanDashboard(previous?.dashboardScan?previous:null);return;}
     if(previous?.paused){
       epoch++;busy=false;
       previous.active=true;previous.paused=false;previous.jobDirect=false;previous.backAt=0;previous.pagingSince=Date.now();previous.message='继续扫描，保留已完成进度';
@@ -708,7 +746,7 @@
     const field=(tag,attr,text)=>{const x=document.createElement(tag);if(text)x.textContent=text;x.setAttribute(attr,'');box.append(x);return x;};
     field('b','data-job-title','Job 设置（北京时间）');
     const enabled=field('input','data-job-enabled');enabled.type='checkbox';enabled.checked=job.enabled;field('span','data-job-enable-label','启用定时扫描');
-    field('p','data-job-help','需保持浏览器运行、Jira 已登录，并保留总览标签页。通知沿用 Teams 设置；关闭定时不打断正在执行的扫描。');
+    field('p','data-job-help','需保持浏览器运行、Jira 已登录，并保留总览或 Dashboard 标签页。Dashboard Job 只扫描 Story。通知沿用 Teams 设置；关闭定时不打断正在执行的扫描。');
     const frequency=field('select','data-job-frequency');for(const [value,text] of [['daily','每天'],['weekdays','工作日（周一至周五）'],['interval','固定间隔']]){const o=document.createElement('option');o.value=value;o.textContent=text;frequency.append(o);}frequency.value=job.frequency;
     field('p','data-job-time-label','每天/工作日运行时间');const time=field('input','data-job-time');time.type='time';time.value=job.time;
     field('p','data-job-interval-label','固定间隔（分钟，至少5分钟，从保存时开始计时）');const minutes=field('input','data-job-minutes');minutes.type='number';minutes.min='5';minutes.value=job.intervalMinutes;
@@ -729,7 +767,7 @@
   if(typeof GM_registerMenuCommand==='function')GM_registerMenuCommand('Jira Monitor：Job 设置',configureJob);
   let jobChecking=false;
   async function jobTick(){
-    if(jobChecking||!/^\/issues(?:\/|$)/.test(location.pathname)||get()?.active||get()?.paused||teamsSending)return;
+    if(jobChecking||(!/^\/issues(?:\/|$)/.test(location.pathname)&&!isDashboard())||get()?.active||get()?.paused||teamsSending)return;
     if(typeof GM_getValue!=='function'||typeof GM_setValue!=='function')return;
     const candidate=jobConfig();if(!candidate.enabled||!candidate.nextAt||Date.now()<candidate.nextAt)return;
     if(typeof navigator==='undefined'||!navigator.locks?.request){notice('Job 未运行：当前浏览器不支持跨标签页锁');return;}
@@ -740,12 +778,14 @@
       // 在执行前推进下次时间：刷新/多标签页不重复补跑；失败不自动重试。
       GM_setValue(JOB_KEY,{...job,nextAt:nextJobTime(job,Date.now()),lastAt:Date.now()});
       epoch++;const token=epoch,id='job-'+Date.now();
-      const state={id,mode:'batch',jobDirect:true,active:true,scope:'all',rules:JSON.parse(JSON.stringify(CONFIG.rules)),queue:[],index:0,results:[],phase:'collecting',listUrl:location.origin+'/issues/?jql='+encodeURIComponent(job.jql),jql:job.jql,collection:{jql:job.jql,startAt:0,issues:[]},message:'Job 正在收集 JQL 结果'};
+      const jobJql=job.jql; // 保留原始 JQL 排序和语义，Story 在搜索结果及详情两次核验。
+      const state={id,storyOnly:isDashboard(),mode:'batch',jobDirect:true,active:true,scope:'all',rules:JSON.parse(JSON.stringify(CONFIG.rules)),queue:[],index:0,results:[],phase:'collecting',listUrl:location.origin+'/issues/?jql='+encodeURIComponent(jobJql),jql:jobJql,collection:{jql:jobJql,startAt:0,issues:[]},message:'Job 正在收集 JQL 结果'};
       save(state);render();
       try{
         const collected=await allIssues(id,token);Object.assign(state,collected,{phase:'reading'});delete state.collection;save(state);
         for(const item of state.queue){
           valid(id,token);const data=await issueHistory(item.key);valid(id,token);const now=Date.now();
+          if(state.storyOnly&&norm(data.issueType)!=='STORY'){state.index++;save(state);continue;}
           state.results.push({...item,assignee:data.assignee,assigneeEmail:data.assigneeEmail,assigneeAccount:data.assigneeAccount,summary:data.summary,currentStatus:data.status,checkedAt:now,rules:evaluateHistory(data.events,data.status,state.rules,now)});
           state.index++;state.message='Job 扫描 '+state.index+'/'+state.queue.length;save(state);render();
           await autoNotifyOverview(state.results.at(-1),state.rules);valid(id,token);
@@ -758,6 +798,6 @@
   addEventListener('pageshow',()=>{epoch++;busy=false;autoDetail();render();setTimeout(pump,800);});
   addEventListener('popstate',()=>{autoDetail();render();});
   setInterval(()=>{autoDetail();if(!host.isConnected)mountPanel();if(!badge.isConnected)document.documentElement.append(badge);pump();void jobTick();},1500);
-  render();badge.textContent='Jira Monitor v5.1.0 已启动 · 点击显示面板';badge.onclick=()=>{mountPanel();body.hidden=false;body.style.display='flex';panel.style.height=`min(${CONFIG.panelHeightPx}px,75vh)`;};autoDetail();setTimeout(pump,800);
+  render();badge.textContent='Jira Monitor v5.2.0 已启动 · 点击显示面板';badge.onclick=()=>{mountPanel();body.hidden=false;body.style.display='flex';panel.style.height=`min(${CONFIG.panelHeightPx}px,75vh)`;};autoDetail();setTimeout(pump,800);
   } catch(error) { report(error); }
 })();
