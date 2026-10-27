@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Jira Monitor
 // @namespace    https://github.com/taomorrow/Jira
-// @version      5.0.7
+// @version      5.1.0
 // @description  详情自动分析、总览手动批量扫描；统一DEV/DCT、周五阈值、Excel和Teams通知
 // @match        https://jira.xpaas.lenovo.com/*
 // @sandbox      DOM
@@ -48,11 +48,11 @@
   if (window.top !== window.self) return;
   if (!/^\/(issues|browse)(\/|$)/.test(location.pathname)) return;
   const badge=document.createElement('div');
-  badge.textContent='Jira Monitor v5.0.7 已注入，正在初始化…';
+  badge.textContent='Jira Monitor v5.1.0 已注入，正在初始化…';
   badge.style.cssText='position:fixed!important;top:8px!important;right:12px!important;z-index:2147483647!important;background:#0052cc!important;color:white!important;padding:8px!important;font:13px Arial!important;max-width:80vw!important;white-space:pre-wrap!important';
   (document.body||document.documentElement).append(badge);
   function report(error) {
-    const text='Jira Monitor v5.0.7 启动失败：'+(error?.message||error);
+    const text='Jira Monitor v5.1.0 启动失败：'+(error?.message||error);
     badge.textContent=text;badge.style.background='#ae2a19';
     (document.body||document.documentElement).append(badge);
     const box=document.createElement('div');box.textContent=text+'。请检查代码开头 CONFIG 配置。';
@@ -261,7 +261,7 @@
   panel.style.cssText='box-sizing:border-box;position:relative;width:100%;height:min(520px,75vh);max-height:75vh;overflow:hidden;z-index:2147483647;background:#fff;color:#172b4d;border:2px solid #0052cc;border-radius:8px;padding:14px;box-shadow:0 4px 24px #0004;font:13px Arial';
   // 使用 DOM 构建，避免站点 Trusted Types 策略拒绝 innerHTML。
   const make=(tag,text,attr,parent)=>{const x=document.createElement(tag);if(text)x.textContent=text;if(attr)x.setAttribute(attr,'');parent.append(x);return x;};
-  make('b','Jira Monitor v5.0.7',null,panel);
+  make('b','Jira Monitor v5.1.0',null,panel);
   const fold=make('button','收起','data-fold',panel);fold.style.float='right';
   const body=make('div',null,'data-body',panel);
   body.style.cssText='display:flex;flex-direction:column;height:calc(100% - 24px);min-height:0';
@@ -572,6 +572,7 @@
   async function pump() {
     if(busy)return;
     let s=get();if(!s?.active){render();return;}
+    if(s.jobDirect)return;
     if(s.phase==='collecting'){continueCollection();return;}
     busy=true;const token=epoch;
     try {
@@ -633,7 +634,7 @@
     const previous=get();if(previous?.active||teamsSending)return;
     if(previous?.paused){
       epoch++;busy=false;
-      previous.active=true;previous.paused=false;previous.backAt=0;previous.pagingSince=Date.now();previous.message='继续扫描，保留已完成进度';
+      previous.active=true;previous.paused=false;previous.jobDirect=false;previous.backAt=0;previous.pagingSince=Date.now();previous.message='继续扫描，保留已完成进度';
       scope.value=previous.scope||scope.value;jqlBox.value=previous.jql||previous.collection?.jql||jqlBox.value;
       if(onOverview()&&previous.phase==='reading')previous.phase='list';
       if(previous.domPaging&&previous.phase==='paging'&&onOverview()&&pageStamp()===previous.pagingFrom)previous.phase='list';
@@ -690,10 +691,73 @@
     save({id:String(Date.now())+'-'+epoch,mode:'single',active:true,rules:JSON.parse(JSON.stringify(CONFIG.rules)),queue:[{key,summary:readSummary(),href:location.href}],index:0,results:[],phase:'reading',message:'正在自动分析 '+key});
     render();void pump();
   }
+  const JOB_KEY='jira-monitor-job-v1';
+  const jobDefaults={enabled:false,frequency:'weekdays',time:'09:00',intervalMinutes:120,jql:'',nextAt:0};
+  function nextJobTime(job,now){
+    if(job.frequency==='interval')return now+Number(job.intervalMinutes)*60000;
+    const [h,m]=job.time.split(':').map(Number),beijing=new Date(now+8*3600000);
+    let candidate=Date.UTC(beijing.getUTCFullYear(),beijing.getUTCMonth(),beijing.getUTCDate(),h,m)-8*3600000;
+    if(candidate<=now)candidate+=86400000;
+    while(job.frequency==='weekdays'&&[0,6].includes(new Date(candidate+8*3600000).getUTCDay()))candidate+=86400000;
+    return candidate;
+  }
+  function jobConfig(){return {...jobDefaults,...GM_getValue(JOB_KEY,{})};}
+  function configureJob(){
+    const job=jobConfig(),overlay=document.createElement('div');overlay.style.cssText='position:fixed;inset:0;z-index:2147483647;background:#0005;display:flex;align-items:center;justify-content:center';
+    const shadow=overlay.attachShadow({mode:'open'}),box=document.createElement('div');box.style.cssText='background:white;color:#172b4d;padding:20px;border-radius:8px;width:460px;max-width:85vw;font:14px Arial';shadow.append(box);
+    const field=(tag,attr,text)=>{const x=document.createElement(tag);if(text)x.textContent=text;x.setAttribute(attr,'');box.append(x);return x;};
+    field('b','data-job-title','Job 设置（北京时间）');
+    const enabled=field('input','data-job-enabled');enabled.type='checkbox';enabled.checked=job.enabled;field('span','data-job-enable-label','启用定时扫描');
+    field('p','data-job-help','需保持浏览器运行、Jira 已登录，并保留总览标签页。通知沿用 Teams 设置；关闭定时不打断正在执行的扫描。');
+    const frequency=field('select','data-job-frequency');for(const [value,text] of [['daily','每天'],['weekdays','工作日（周一至周五）'],['interval','固定间隔']]){const o=document.createElement('option');o.value=value;o.textContent=text;frequency.append(o);}frequency.value=job.frequency;
+    field('p','data-job-time-label','每天/工作日运行时间');const time=field('input','data-job-time');time.type='time';time.value=job.time;
+    field('p','data-job-interval-label','固定间隔（分钟，至少5分钟，从保存时开始计时）');const minutes=field('input','data-job-minutes');minutes.type='number';minutes.min='5';minutes.value=job.intervalMinutes;
+    field('p','data-job-jql-label','扫描 JQL（必填，扫描全部匹配结果）');const jql=field('textarea','data-job-jql');jql.rows=4;jql.style.width='100%';jql.value=job.jql||new URL(location.href).searchParams.get('jql')||'';
+    const status=field('p','data-job-status',job.nextAt?'下次：'+beijingTime(job.nextAt):'未启用');
+    const saveButton=field('button','data-job-save','保存'),close=field('button','data-job-close','关闭');close.onclick=()=>overlay.remove();
+    saveButton.onclick=()=>{try{
+      const value={enabled:enabled.checked,frequency:frequency.value,time:time.value,intervalMinutes:Number(minutes.value),jql:jql.value.trim()};
+      if(!['daily','weekdays','interval'].includes(value.frequency)||!/^([01]\d|2[0-3]):[0-5]\d$/.test(value.time))throw Error('运行时间或频率无效');
+      if(value.frequency==='interval'&&(!Number.isFinite(value.intervalMinutes)||value.intervalMinutes<5))throw Error('间隔至少5分钟');
+      if(value.enabled&&!value.jql)throw Error('请填写 JQL');
+      value.nextAt=value.enabled?nextJobTime(value,Date.now()):0;GM_setValue(JOB_KEY,value);
+      if(JSON.stringify(GM_getValue(JOB_KEY,null))!==JSON.stringify(value))throw Error('配置回读失败');
+      status.textContent=value.enabled?'已保存，下次：'+beijingTime(value.nextAt):'已停用定时扫描';status.style.color='#00875a';
+    }catch(error){status.textContent='保存失败：'+safeError(error);status.style.color='#ae2a19';}};
+    (document.body||document.documentElement).append(overlay);
+  }
+  if(typeof GM_registerMenuCommand==='function')GM_registerMenuCommand('Jira Monitor：Job 设置',configureJob);
+  let jobChecking=false;
+  async function jobTick(){
+    if(jobChecking||!/^\/issues(?:\/|$)/.test(location.pathname)||get()?.active||get()?.paused||teamsSending)return;
+    if(typeof GM_getValue!=='function'||typeof GM_setValue!=='function')return;
+    const candidate=jobConfig();if(!candidate.enabled||!candidate.nextAt||Date.now()<candidate.nextAt)return;
+    if(typeof navigator==='undefined'||!navigator.locks?.request){notice('Job 未运行：当前浏览器不支持跨标签页锁');return;}
+    jobChecking=true;
+    try{await navigator.locks.request('jira-monitor-job-run',{ifAvailable:true},async lock=>{
+      if(!lock)return;
+      const job=jobConfig();if(!job.enabled||Date.now()<job.nextAt||get()?.active||get()?.paused)return;
+      // 在执行前推进下次时间：刷新/多标签页不重复补跑；失败不自动重试。
+      GM_setValue(JOB_KEY,{...job,nextAt:nextJobTime(job,Date.now()),lastAt:Date.now()});
+      epoch++;const token=epoch,id='job-'+Date.now();
+      const state={id,mode:'batch',jobDirect:true,active:true,scope:'all',rules:JSON.parse(JSON.stringify(CONFIG.rules)),queue:[],index:0,results:[],phase:'collecting',listUrl:location.origin+'/issues/?jql='+encodeURIComponent(job.jql),jql:job.jql,collection:{jql:job.jql,startAt:0,issues:[]},message:'Job 正在收集 JQL 结果'};
+      save(state);render();
+      try{
+        const collected=await allIssues(id,token);Object.assign(state,collected,{phase:'reading'});delete state.collection;save(state);
+        for(const item of state.queue){
+          valid(id,token);const data=await issueHistory(item.key);valid(id,token);const now=Date.now();
+          state.results.push({...item,assignee:data.assignee,assigneeEmail:data.assigneeEmail,assigneeAccount:data.assigneeAccount,summary:data.summary,currentStatus:data.status,checkedAt:now,rules:evaluateHistory(data.events,data.status,state.rules,now)});
+          state.index++;state.message='Job 扫描 '+state.index+'/'+state.queue.length;save(state);render();
+          await autoNotifyOverview(state.results.at(-1),state.rules);valid(id,token);
+        }
+        state.active=false;state.jobDirect=false;state.phase='done';state.message='Job 扫描完成：'+state.index+'/'+state.queue.length;save(state);render();
+      }catch(error){if(error.message!=='CANCELLED'){const s=get();if(s?.id===id){s.active=false;s.jobDirect=false;s.phase='stopped';s.message='Job 失败：'+safeError(error);save(s);render();}}}
+    });}catch(error){notice('Job 调度失败：'+safeError(error));}finally{jobChecking=false;}
+  }
   addEventListener('pagehide',()=>{epoch++;busy=false;});
   addEventListener('pageshow',()=>{epoch++;busy=false;autoDetail();render();setTimeout(pump,800);});
   addEventListener('popstate',()=>{autoDetail();render();});
-  setInterval(()=>{autoDetail();if(!host.isConnected)mountPanel();if(!badge.isConnected)document.documentElement.append(badge);pump();},1500);
-  render();badge.textContent='Jira Monitor v5.0.7 已启动 · 点击显示面板';badge.onclick=()=>{mountPanel();body.hidden=false;body.style.display='flex';panel.style.height=`min(${CONFIG.panelHeightPx}px,75vh)`;};autoDetail();setTimeout(pump,800);
+  setInterval(()=>{autoDetail();if(!host.isConnected)mountPanel();if(!badge.isConnected)document.documentElement.append(badge);pump();void jobTick();},1500);
+  render();badge.textContent='Jira Monitor v5.1.0 已启动 · 点击显示面板';badge.onclick=()=>{mountPanel();body.hidden=false;body.style.display='flex';panel.style.height=`min(${CONFIG.panelHeightPx}px,75vh)`;};autoDetail();setTimeout(pump,800);
   } catch(error) { report(error); }
 })();
