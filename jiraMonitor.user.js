@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Jira Monitor
 // @namespace    https://github.com/taomorrow/Jira
-// @version      5.5.0
+// @version      5.5.1
 // @description  详情自动分析、总览手动批量扫描；统一DEV/DCT、周五阈值、Excel和Teams通知
 // @match        https://jira.xpaas.lenovo.com/*
 // @sandbox      DOM
@@ -50,11 +50,11 @@
   const isDashboard=()=>/^\/secure\/Dashboard\.jspa$/i.test(location.pathname);
   if (!/^\/(issues|browse)(\/|$)/.test(location.pathname)&&!isDashboard()) return;
   const badge=document.createElement('div');
-  badge.textContent='Jira Monitor v5.5.0 已注入，正在初始化…';
+  badge.textContent='Jira Monitor v5.5.1 已注入，正在初始化…';
   badge.style.cssText='position:fixed!important;top:8px!important;right:12px!important;z-index:2147483647!important;background:#0052cc!important;color:white!important;padding:8px!important;font:13px Arial!important;max-width:80vw!important;white-space:pre-wrap!important';
   (document.body||document.documentElement).append(badge);
   function report(error) {
-    const text='Jira Monitor v5.5.0 启动失败：'+(error?.message||error);
+    const text='Jira Monitor v5.5.1 启动失败：'+(error?.message||error);
     badge.textContent=text;badge.style.background='#ae2a19';
     (document.body||document.documentElement).append(badge);
     const box=document.createElement('div');box.textContent=text+'。请检查代码开头 CONFIG 配置。';
@@ -154,13 +154,13 @@
     const overlay=document.createElement('div');overlay.style.cssText='position:fixed;inset:0;z-index:2147483647;background:#0005;display:flex;align-items:center;justify-content:center';
     const shadow=overlay.attachShadow({mode:'open'}),box=document.createElement('div');box.style.cssText='background:white;color:#172b4d;padding:20px;border-radius:8px;width:760px;max-width:92vw;max-height:85vh;overflow:auto;font:14px Arial';shadow.append(box);
     const add=(tag,text,attr,parent=box)=>{const x=document.createElement(tag);if(text)x.textContent=text;if(attr)x.setAttribute(attr,'');parent.append(x);return x;};
-    add('b','统计规则设置');add('p','全项目共用；阈值单位为自然天。下限≤天数＜上限：即将超期；天数≥上限：已超期。周五仍按现有设置提前2天。保存用于新扫描，已有结果及运行/暂停中的任务保留原规则。');
+    add('b','统计规则设置');add('p','全项目共用；阈值单位为自然天，支持0.01天（14.4分钟）。下限≤天数＜上限：即将超期；天数≥上限：已超期。周五仍按现有设置提前2天。保存用于新扫描，已有结果及运行/暂停中的任务保留原规则。');
     const rows=[];
     function build(rule){
       const group=add('fieldset',null,'data-rule-row');group.style.marginBottom='12px';add('legend',rule.name,null,group);const fields={};
       for(const [key,label,multi] of [['name','规则名称'],['description','流程说明'],['minDays','预警下限（含）'],['maxDays','超期上限（含）'],['currentStatuses','当前状态范围（每行一个或用逗号/分号分隔）',true],['startStatus','起始状态（取首次进入的时间）'],['forbiddenAfterStart','起点后排除状态（可留空；每行一个或用逗号/分号分隔）',true]]){
         add('label',label,null,group).style.cssText='display:block;margin-top:8px';const input=add(multi?'textarea':'input',null,'data-rule-'+key,group);input.style.cssText='width:100%;box-sizing:border-box';
-        if(key==='minDays'||key==='maxDays'){input.type='number';input.min='0';input.step='0.1';}
+        if(key==='minDays'||key==='maxDays'){input.type='number';input.min='0';input.step='0.01';}
         if(multi)input.rows=3;
         input.value=Array.isArray(rule[key])?rule[key].join('\n'):String(rule[key]??'');fields[key]=input;
       }rows.push(fields);
@@ -335,7 +335,7 @@
   panel.style.cssText='box-sizing:border-box;position:relative;width:100%;height:min(520px,75vh);max-height:75vh;overflow:hidden;z-index:2147483647;background:#fff;color:#172b4d;border:2px solid #0052cc;border-radius:8px;padding:14px;box-shadow:0 4px 24px #0004;font:13px Arial';
   // 使用 DOM 构建，避免站点 Trusted Types 策略拒绝 innerHTML。
   const make=(tag,text,attr,parent)=>{const x=document.createElement(tag);if(text)x.textContent=text;if(attr)x.setAttribute(attr,'');parent.append(x);return x;};
-  make('b','Jira Monitor v5.5.0',null,panel);
+  make('b','Jira Monitor v5.5.1',null,panel);
   const fold=make('button','收起','data-fold',panel);fold.style.float='right';
   const body=make('div',null,'data-body',panel);
   body.style.cssText='display:flex;flex-direction:column;height:calc(100% - 24px);min-height:0';
@@ -881,6 +881,6 @@
   addEventListener('pageshow',()=>{epoch++;busy=false;autoDetail();render();setTimeout(pump,800);});
   addEventListener('popstate',()=>{autoDetail();render();});
   setInterval(()=>{autoDetail();if(!host.isConnected)mountPanel();if(!badge.isConnected)document.documentElement.append(badge);pump();void jobTick();},1500);
-  render();if(ruleLoadError)notice(ruleLoadError);badge.textContent='Jira Monitor v5.5.0 已启动 · 点击显示面板';badge.onclick=()=>{mountPanel();body.hidden=false;body.style.display='flex';panel.style.height=`min(${CONFIG.panelHeightPx}px,75vh)`;};autoDetail();setTimeout(pump,800);
+  render();if(ruleLoadError)notice(ruleLoadError);badge.textContent='Jira Monitor v5.5.1 已启动 · 点击显示面板';badge.onclick=()=>{mountPanel();body.hidden=false;body.style.display='flex';panel.style.height=`min(${CONFIG.panelHeightPx}px,75vh)`;};autoDetail();setTimeout(pump,800);
   } catch(error) { report(error); }
 })();
