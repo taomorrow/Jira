@@ -1,12 +1,14 @@
-const {boot,source}=require('./helpers.cjs');const vm=require('vm'),assert=require('assert');
-const start=source.indexOf('  function nextJobTime'),end=source.indexOf('  function jobConfig',start),ctx={};vm.createContext(ctx);vm.runInContext(source.slice(start,end)+';globalThis.next=nextJobTime;',ctx);
-const fri=Date.parse('2026-10-23T02:00:00Z');assert.equal(new Date(ctx.next({frequency:'weekdays',time:'09:00'},fri)).toISOString(),'2026-10-26T01:00:00.000Z');assert.equal(ctx.next({frequency:'interval',intervalMinutes:120},fri),fri+7200000);
+const {boot,source}=require('./helpers.cjs');const assert=require('assert');
 (async()=>{
- let interval,requests=0;const values=new Map([['jira-monitor-job-v1',{enabled:true,frequency:'interval',intervalMinutes:120,time:'09:00',jql:'project=TEST',nextAt:1}]]);
- const app=boot(source,{globals:{AbortController,clearTimeout,setInterval:fn=>{interval=fn;},GM_getValue:(k,d)=>values.has(k)?values.get(k):d,GM_setValue:(k,v)=>values.set(k,v),navigator:{locks:{request:async(name,options,fn)=>fn({name})}},fetch:async path=>{requests++;return {ok:true,json:async()=>path==='/rest/api/2/search'?{total:1,issues:[{key:'TEST-1',fields:{summary:'Test',status:{name:'In Progress'}}}]}:{fields:{summary:'Test',status:{name:'In Progress'},assignee:null},changelog:{total:1,histories:[{created:new Date(Date.now()-86400000).toISOString(),items:[{field:'status',toString:'In Progress'}]}]}}};}}});
- assert(app.menus.some(m=>m.name==='Jira Monitor：配置中心'));
- interval();for(let n=0;n<15;n++)await new Promise(r=>setImmediate(r));
- const state=JSON.parse(app.storage.get('jira-monitor-batch-v5'));assert.equal(state.phase,'done',state.message);assert.equal(state.index,1);assert.equal(state.results.length,1);assert(state.results[0].rules[0].seconds>0);assert.equal(requests,2);assert(values.get('jira-monitor-job-v1').nextAt>Date.now());
- interval();await new Promise(r=>setImmediate(r));assert.equal(requests,2);
- console.log('PASS: Beijing weekday/interval scheduling; job menu; full REST scan; saved next run prevents repeat');
+ let interval,requests=0;const legacy={enabled:true,frequency:'interval',nextAt:1,jql:'project=TEST'};
+ const app=boot(source,{globals:{setInterval:fn=>{interval=fn;},GM_getValue:(k,d)=>k==='jira-monitor-job-v1'?legacy:d,fetch:async()=>{requests++;throw Error('Unexpected scheduled request');}}});
+ // The panel lives on documentElement in the DOM test helper.
+ const panelHost=app.ctx.document.documentElement.children.find(x=>x.id==='jira-duration-panel-host');
+ const shadow=panelHost.shadowRoot,body=shadow.querySelector('[data-body]'),fold=shadow.querySelector('[data-fold]');
+ assert.equal(body.style.display,'none');assert.equal(fold.textContent,'展开');fold.onclick();assert.equal(body.style.display,'flex');assert.equal(fold.textContent,'收起');fold.onclick();assert.equal(body.style.display,'none');
+ app.menus.find(x=>x.name==='Jira Monitor：显示统计面板').fn();assert.equal(body.style.display,'flex');assert.equal(fold.textContent,'收起');
+ app.menus.find(x=>x.name==='Jira Monitor：配置中心').fn();assert(!app.body.children.at(-1).shadowRoot.querySelector('[data-center-job]'));
+ assert(!source.includes('function jobTick'));assert(!source.includes('旧版全局设置保留在本机，不自动套用于所有项目'));
+ interval();await new Promise(r=>setImmediate(r));assert.equal(requests,0);
+ console.log('PASS: default collapsed panel, expand/fold/menu, removed Job settings and scheduler; legacy enabled Job does not execute');
 })().catch(e=>{console.error(e);process.exitCode=1;});
