@@ -1,0 +1,11 @@
+const {boot,source}=require('./helpers.cjs');const assert=require('assert');
+const values=new Map();const globals={GM_getValue:(k,d)=>values.has(k)?values.get(k):d,GM_setValue:(k,v)=>values.set(k,v)};
+const app=boot(source,{globals});app.menus.find(m=>m.name==='Jira Monitor：配置中心').fn();app.body.children.at(-1).shadowRoot.querySelector('[data-center-rules]').onclick();
+const form=app.body.children.at(-1).shadowRoot,rows=form.descendants().filter(x=>'data-rule-row' in x.attrs),dev=rows[0];
+dev.querySelector('[data-rule-minDays]').value='3.5';dev.querySelector('[data-rule-maxDays]').value='6';dev.querySelector('[data-rule-currentStatuses]').value='In Progress; Open\nIn Progress';
+form.querySelector('[data-rule-save]').onclick();assert(form.querySelector('[data-rule-status]').textContent.includes('已保存并验证'));assert.equal(values.get('jira-monitor-rules-v1')[0].minDays,3.5);assert.equal(values.get('jira-monitor-rules-v1')[0].currentStatuses.length,2);
+const reloaded=boot(source,{globals});const panel=reloaded.root.children.find(x=>x.id==='jira-duration-panel-host').shadowRoot;assert(panel.querySelector('[data-config]').textContent.includes('3.5≤天数＜6'));
+dev.querySelector('[data-rule-maxDays]').value='2';form.querySelector('[data-rule-save]').onclick();assert(form.querySelector('[data-rule-status]').textContent.includes('保存失败'));assert.equal(values.get('jira-monitor-rules-v1')[0].maxDays,6);
+form.querySelector('[data-rule-default]').onclick();assert.equal(values.get('jira-monitor-rules-v1')[0].minDays,3.5);form.querySelector('[data-rule-save]').onclick();assert.equal(values.get('jira-monitor-rules-v1')[0].minDays,4);assert.equal(values.get('jira-monitor-rules-v1')[1].maxDays,14);
+values.set('jira-monitor-rules-v1',[{name:'broken'}]);const fallback=boot(source,{globals});assert(fallback.root.children.find(x=>x.id==='jira-duration-panel-host').shadowRoot.querySelector('[data-config]').textContent.includes('4≤天数＜5'));
+console.log('PASS: rule form saves thresholds/states, dedups states, rejects invalid limits, persists across reload, restores defaults only on save, handles corrupt stored rules');

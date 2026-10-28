@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Jira Monitor
 // @namespace    https://github.com/taomorrow/Jira
-// @version      5.4.0
+// @version      5.5.0
 // @description  详情自动分析、总览手动批量扫描；统一DEV/DCT、周五阈值、Excel和Teams通知
 // @match        https://jira.xpaas.lenovo.com/*
 // @sandbox      DOM
@@ -45,15 +45,16 @@
     panelBottomPx: 68, // 为页面右下角的翻页按钮留出空间
   };
   // ================= 规则配置结束 =================
+  const DEFAULT_RULES=JSON.parse(JSON.stringify(CONFIG.rules));
   if (window.top !== window.self) return;
   const isDashboard=()=>/^\/secure\/Dashboard\.jspa$/i.test(location.pathname);
   if (!/^\/(issues|browse)(\/|$)/.test(location.pathname)&&!isDashboard()) return;
   const badge=document.createElement('div');
-  badge.textContent='Jira Monitor v5.4.0 已注入，正在初始化…';
+  badge.textContent='Jira Monitor v5.5.0 已注入，正在初始化…';
   badge.style.cssText='position:fixed!important;top:8px!important;right:12px!important;z-index:2147483647!important;background:#0052cc!important;color:white!important;padding:8px!important;font:13px Arial!important;max-width:80vw!important;white-space:pre-wrap!important';
   (document.body||document.documentElement).append(badge);
   function report(error) {
-    const text='Jira Monitor v5.4.0 启动失败：'+(error?.message||error);
+    const text='Jira Monitor v5.5.0 启动失败：'+(error?.message||error);
     badge.textContent=text;badge.style.background='#ae2a19';
     (document.body||document.documentElement).append(badge);
     const box=document.createElement('div');box.textContent=text+'。请检查代码开头 CONFIG 配置。';
@@ -141,12 +142,45 @@
       GM_setValue(PROJECT_SETTING,result);if(JSON.stringify(GM_getValue(PROJECT_SETTING,null))!==JSON.stringify(result))throw Error('存储回读失败');
       render();status.style.color='#00875a';status.textContent='已保存并验证 '+result.length+' 个项目，本页立即生效';
     }catch(error){status.style.color='#ae2a19';status.textContent='保存失败：'+safeError(error);}};
-    add('hr');add('button','Job 定时扫描设置','data-center-job').onclick=configureJob;
+    add('hr');add('button','统计规则设置','data-center-rules').onclick=configureRules;add('button','Job 定时扫描设置','data-center-job').onclick=configureJob;
     add('button','启动诊断').onclick=()=>alert(badge.textContent+'\n页面：'+location.href);
     add('button','关闭').onclick=()=>overlay.remove();
     (document.body||document.documentElement).append(overlay);
   }
   if(typeof GM_registerMenuCommand==='function')GM_registerMenuCommand('Jira Monitor：配置中心',configureCenter);
+  const RULE_SETTING='jira-monitor-rules-v1';
+  const parseStatuses=value=>[...new Set(String(value||'').split(/[\n,;，；]+/).map(x=>x.trim()).filter(Boolean))];
+  function configureRules(){
+    const overlay=document.createElement('div');overlay.style.cssText='position:fixed;inset:0;z-index:2147483647;background:#0005;display:flex;align-items:center;justify-content:center';
+    const shadow=overlay.attachShadow({mode:'open'}),box=document.createElement('div');box.style.cssText='background:white;color:#172b4d;padding:20px;border-radius:8px;width:760px;max-width:92vw;max-height:85vh;overflow:auto;font:14px Arial';shadow.append(box);
+    const add=(tag,text,attr,parent=box)=>{const x=document.createElement(tag);if(text)x.textContent=text;if(attr)x.setAttribute(attr,'');parent.append(x);return x;};
+    add('b','统计规则设置');add('p','全项目共用；阈值单位为自然天。下限≤天数＜上限：即将超期；天数≥上限：已超期。周五仍按现有设置提前2天。保存用于新扫描，已有结果及运行/暂停中的任务保留原规则。');
+    const rows=[];
+    function build(rule){
+      const group=add('fieldset',null,'data-rule-row');group.style.marginBottom='12px';add('legend',rule.name,null,group);const fields={};
+      for(const [key,label,multi] of [['name','规则名称'],['description','流程说明'],['minDays','预警下限（含）'],['maxDays','超期上限（含）'],['currentStatuses','当前状态范围（每行一个或用逗号/分号分隔）',true],['startStatus','起始状态（取首次进入的时间）'],['forbiddenAfterStart','起点后排除状态（可留空；每行一个或用逗号/分号分隔）',true]]){
+        add('label',label,null,group).style.cssText='display:block;margin-top:8px';const input=add(multi?'textarea':'input',null,'data-rule-'+key,group);input.style.cssText='width:100%;box-sizing:border-box';
+        if(key==='minDays'||key==='maxDays'){input.type='number';input.min='0';input.step='0.1';}
+        if(multi)input.rows=3;
+        input.value=Array.isArray(rule[key])?rule[key].join('\n'):String(rule[key]??'');fields[key]=input;
+      }rows.push(fields);
+    }
+    CONFIG.rules.forEach(build);
+    const status=add('p',null,'data-rule-status');
+    add('button','保存规则','data-rule-save').onclick=()=>{try{
+      const rules=rows.map(fields=>{
+        if(!fields.minDays.value.trim()||!fields.maxDays.value.trim())throw Error('阈值不能为空');
+        return {name:fields.name.value.trim(),description:fields.description.value.trim(),minDays:Number(fields.minDays.value),maxDays:Number(fields.maxDays.value),currentStatuses:parseStatuses(fields.currentStatuses.value),startStatus:fields.startStatus.value.trim(),forbiddenAfterStart:parseStatuses(fields.forbiddenAfterStart.value)};
+      });validateRules(rules);
+      GM_setValue(RULE_SETTING,rules);if(JSON.stringify(GM_getValue(RULE_SETTING,null))!==JSON.stringify(rules))throw Error('存储回读失败');
+      CONFIG.rules=rules;render();status.style.color='#00875a';status.textContent='规则已保存并验证。请开始新扫描或重新分析；已有结果不自动重算。';
+    }catch(error){status.style.color='#ae2a19';status.textContent='保存失败：'+safeError(error);}};
+    add('button','填入默认规则（保存后生效）','data-rule-default').onclick=()=>{
+      if(rows.length!==DEFAULT_RULES.length){status.textContent='当前规则数量与默认配置不一致，请检查';return;}
+      rows.forEach((fields,i)=>{for(const key of Object.keys(fields)){const value=DEFAULT_RULES[i][key];fields[key].value=Array.isArray(value)?value.join('\n'):String(value);}});status.textContent='已填入默认值，点击保存规则后生效';
+    };
+    add('button','关闭').onclick=()=>overlay.remove();(document.body||document.documentElement).append(overlay);
+  }
   const norm=s=>String(s||'').replace(/[_\s-]+/g,' ').trim().toUpperCase();
   function validateRules(rules){
     const names=new Set();
@@ -195,7 +229,7 @@
       const index=sorted.findIndex(e=>norm(e.to)===norm(rule.startStatus));
       if(index<0)return {...base,status:'未发现起始记录',details:'History 中无进入 '+rule.startStatus+' 的记录'};
       const start=sorted[index];
-      if(sorted.slice(index+1).some(e=>rule.forbiddenAfterStart.map(norm).includes(norm(e.to))))return {...base,status:'后续流程已发生',details:'首次进入 In Progress 后存在完成或取消等排除状态'};
+      if(sorted.slice(index+1).some(e=>rule.forbiddenAfterStart.map(norm).includes(norm(e.to))))return {...base,status:'后续流程已发生',details:'首次进入 '+rule.startStatus+' 后存在配置的排除状态'};
       if(!Number.isFinite(start.at)||start.at>now)return {...base,status:'读取失败',details:'起始时间无效或晚于当前系统时间'};
       const elapsed=(now-start.at)/1000;
       return {...base,status:'已统计',seconds:elapsed,inRange:elapsed>=rule.minDays*86400&&elapsed<rule.maxDays*86400,startAt:new Date(start.at).toISOString(),details:'首次 New: '+rule.startStatus+'；当前系统时间减起始时间；来源：'+(start.source||'History REST 精确时间')};
@@ -301,7 +335,7 @@
   panel.style.cssText='box-sizing:border-box;position:relative;width:100%;height:min(520px,75vh);max-height:75vh;overflow:hidden;z-index:2147483647;background:#fff;color:#172b4d;border:2px solid #0052cc;border-radius:8px;padding:14px;box-shadow:0 4px 24px #0004;font:13px Arial';
   // 使用 DOM 构建，避免站点 Trusted Types 策略拒绝 innerHTML。
   const make=(tag,text,attr,parent)=>{const x=document.createElement(tag);if(text)x.textContent=text;if(attr)x.setAttribute(attr,'');parent.append(x);return x;};
-  make('b','Jira Monitor v5.4.0',null,panel);
+  make('b','Jira Monitor v5.5.0',null,panel);
   const fold=make('button','收起','data-fold',panel);fold.style.float='right';
   const body=make('div',null,'data-body',panel);
   body.style.cssText='display:flex;flex-direction:column;height:calc(100% - 24px);min-height:0';
@@ -329,6 +363,8 @@
   mountPanel();
   if(typeof GM_registerMenuCommand==='function') GM_registerMenuCommand('Jira Monitor：显示统计面板',()=>{mountPanel();body.hidden=false;body.style.display='flex';panel.style.height=`min(${CONFIG.panelHeightPx}px,75vh)`;});
   const el=s=>panel.querySelector(s);
+  let ruleLoadError='';
+  try{const saved=typeof GM_getValue==='function'?GM_getValue(RULE_SETTING,null):null;if(saved!==null){validateRules(saved);CONFIG.rules=saved;}}catch(error){ruleLoadError='已保存规则无效，本次使用代码默认规则：'+safeError(error);}
   validateRules(CONFIG.rules);
   el('[data-config]').textContent=CONFIG.rules.map(r=>ruleText(r)).join('\n');
   let busy=false, epoch=0;
@@ -845,6 +881,6 @@
   addEventListener('pageshow',()=>{epoch++;busy=false;autoDetail();render();setTimeout(pump,800);});
   addEventListener('popstate',()=>{autoDetail();render();});
   setInterval(()=>{autoDetail();if(!host.isConnected)mountPanel();if(!badge.isConnected)document.documentElement.append(badge);pump();void jobTick();},1500);
-  render();badge.textContent='Jira Monitor v5.4.0 已启动 · 点击显示面板';badge.onclick=()=>{mountPanel();body.hidden=false;body.style.display='flex';panel.style.height=`min(${CONFIG.panelHeightPx}px,75vh)`;};autoDetail();setTimeout(pump,800);
+  render();if(ruleLoadError)notice(ruleLoadError);badge.textContent='Jira Monitor v5.5.0 已启动 · 点击显示面板';badge.onclick=()=>{mountPanel();body.hidden=false;body.style.display='flex';panel.style.height=`min(${CONFIG.panelHeightPx}px,75vh)`;};autoDetail();setTimeout(pump,800);
   } catch(error) { report(error); }
 })();
