@@ -1,0 +1,27 @@
+const {boot,source}=require('./helpers.cjs');const assert=require('assert');
+(async()=>{
+ const hooks={CSP:'https://csp.api.powerplatform.com/test',OSPIT:'https://ospit.api.powerplatform.com/test'};
+ const values=new Map([['jira-monitor-webhook','https://legacy.api.powerplatform.com/test'],['jira-monitor-email-v1',{enabled:true,recipients:['legacy@example.com']}]]),requests=[];
+ const code=source.replace("  addEventListener('pagehide'","  globalThis.testApi={sendOverviewItem,projectKeyOf,projectTarget};\n  addEventListener('pagehide'");
+ const globals={GM_getValue:(k,d)=>values.has(k)?values.get(k):d,GM_setValue:(k,v)=>values.set(k,v),GM_xmlhttpRequest:o=>{requests.push({url:o.url,payload:JSON.parse(o.data)});o.onload({status:202});}};
+ const app=boot(code,{location:{pathname:'/issues/',href:'https://jira.xpaas.lenovo.com/issues/',origin:'https://jira.xpaas.lenovo.com'},globals});
+ assert.deepEqual(app.menus.map(m=>m.name),['Jira Monitor：配置中心','Jira Monitor：显示统计面板']);
+ app.menus.find(m=>m.name==='Jira Monitor：配置中心').fn();const form=app.body.children.at(-1).shadowRoot;
+ const rows=form.descendants().filter(x=>'data-project-row' in x.attrs);assert.equal(rows.length,2);
+ rows.forEach((row,i)=>{const key=['CSP','OSPIT'][i];row.querySelector('[data-project-hook]').value=hooks[key];row.querySelector('[data-project-emails]').value=key.toLowerCase()+'@example.com; '+key.toLowerCase()+'@example.com';row.querySelector('[data-project-auto]').checked=true;});
+ form.querySelector('[data-project-save]').onclick();assert(form.querySelector('[data-project-status]').textContent.includes('已保存并验证'));assert.equal(values.get('jira-monitor-projects-v1').length,2);
+ rows[1].querySelector('[data-project-key]').value='CSP';form.querySelector('[data-project-save]').onclick();assert(form.querySelector('[data-project-status]').textContent.includes('重复'));assert.equal(values.get('jira-monitor-projects-v1')[1].projectKey,'OSPIT');
+ const api=app.ctx.testApi;assert.equal(api.projectKeyOf('FY26CC-200'),'FY26CC');assert.equal(api.projectKeyOf('CSP-3909'),'CSP');
+ const rules=[{name:'DEV',minDays:4,maxDays:5,currentStatuses:['In Progress']},{name:'DCT',minDays:13,maxDays:14,currentStatuses:['In Progress']}];
+ const item=key=>({key,summary:'<Test>',assignee:'Person',rules:[{name:'DEV',seconds:6*86400},{name:'DCT',seconds:6*86400}]});
+ await api.sendOverviewItem(item('CSP-1'),rules,false);await api.sendOverviewItem(item('OSPIT-1'),rules,false);
+ assert.equal(requests[0].url,hooks.CSP);assert.equal(requests[1].url,hooks.OSPIT);assert.equal(requests[0].payload.email.to,'csp@example.com');assert.equal(requests[1].payload.email.to,'ospit@example.com');assert.equal(requests[0].payload.rules.length,1);assert(!requests[0].payload.email.bodyHtml.includes('<Test>'));
+ await assert.rejects(api.sendOverviewItem(item('UNKNOWN-1'),rules,false),/未配置通知目标/);assert.equal(requests.length,2);
+ assert.equal(await api.sendOverviewItem(item('CSP-1'),rules,true),'submitted');assert.equal(await api.sendOverviewItem(item('CSP-1'),rules,true),'suppressed');
+ assert.equal(await api.sendOverviewItem(item('OSPIT-1'),rules,true),'submitted');assert.equal(requests.length,4);
+ const saved=values.get('jira-monitor-projects-v1');saved[1].autoNotify=false;assert.equal(await api.sendOverviewItem(item('OSPIT-2'),rules,true),'skipped');await api.sendOverviewItem(item('OSPIT-2'),rules,false);assert.equal(requests.length,5);
+ app.storage.set('jira-monitor-detail-v5',JSON.stringify({mode:'single',results:[]}));app.ctx.location.pathname='/browse/CSP-3';app.ctx.location.href='https://jira.xpaas.lenovo.com/browse/CSP-3';
+ assert.equal(await api.sendOverviewItem(item('CSP-3'),rules,true),'skipped');await api.sendOverviewItem(item('CSP-3'),rules,false);assert.equal(requests.at(-1).payload.rules.length,2);
+ assert.equal(values.get('jira-monitor-webhook'),'https://legacy.api.powerplatform.com/test');assert.equal(values.get('jira-monitor-email-v1').recipients[0],'legacy@example.com');
+ console.log('PASS: project table save/dedup, Project Key parsing, mixed-project hook/email routing, unknown-project blocking, isolated cooldown, manual/auto/detail policies; legacy storage preserved');
+})().catch(e=>{console.error(e);process.exitCode=1;});
