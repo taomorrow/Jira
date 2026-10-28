@@ -15,7 +15,7 @@
 查看 [Jira Monitor 详细文档](jiraMonitor.md)，包括：
 
 - 总览自动翻页、暂停/继续，详情自动检测与重新分析。
-- Dashboard（`/secure/Dashboard.jspa`）扫描已加载工单，仅统计 Story；支持作为 Job 运行页面。
+- Dashboard（`/secure/Dashboard.jspa`）扫描已加载工单，不限 Issue Type；支持作为 Job 运行页面。
 - 油猴菜单【Job 设置】：指定 JQL，按北京时间每天、工作日或固定间隔自动扫描（需保留已登录的总览标签页）。
 - DEV正常阈值4/5天、DCT 13/14天，北京时间周五上下限提前2天。
 - 彩色Excel导出、Jira超链接和负责人。

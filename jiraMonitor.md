@@ -2,7 +2,7 @@
 
 首次使用？请先阅读 [Tampermonkey 与脚本安装指南](INSTALL.md)。
 
-统一版脚本：详情自动分析，总览手动启动批量扫描；共用规则、Teams通知、去重、设置和Excel导出。公开版版本：5.3.0。
+统一版脚本：详情自动分析，总览手动启动批量扫描；共用规则、Teams通知、去重、设置和Excel导出。公开版版本：5.3.1。
 
 ## 安装与适用范围
 
@@ -162,3 +162,10 @@ Dashboard 也可承载 Job：按 Job 中配置的 JQL 扫描全部搜索分页�
 ## v5.3.0 多收件人邮件设置
 
 油猴菜单新增【邮件设置】，支持多个邮箱、启用开关、校验去重和持久化。发送通知请求新增 email 字段，保留原 Teams 卡片和过滤规则。邮件通过现有 Webhook 工作流发送，需按 [邮件通知配置](EMAIL.md) 添加 Outlook 邮件步骤；脚本本身不直接连接 SMTP。现有 Webhook 与 Job 配置不变。
+
+
+## v5.3.1 取消类型限制与 Dashboard 识别修复
+
+取消 Dashboard 手动扫描及 Dashboard Job 的 Story 限制；所有 Issue Type 都可纳入，DEV/DCT 当前状态规则仍保留。用户 JQL 中若自行指定 issuetype，仍按原 JQL 执行。
+
+旧版仅识别 href 包含 /browse/ 的链接。新版还识别工单编号文本、data-issue-key/data-issuekey、selectedIssue/issueKey 等跳转参数，并读取同源 iframe 和开放 Shadow DOM。找不到工单时显示文档/候选链接/iframe/不可读取数量，便于判断是否为跨域小组件。跨域 iframe 或关闭的 Shadow DOM 仍不能读取；可用 Job JQL 或打开对应筛选列表。手动扫描仍只包含已加载工单，不自动翻小组件分页。
