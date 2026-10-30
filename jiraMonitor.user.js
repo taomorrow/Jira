@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Jira Monitor
 // @namespace    https://github.com/taomorrow/Jira
-// @version      5.5.3
+// @version      5.5.4
 // @description  详情自动分析、总览手动批量扫描；统一DEV/DCT、周五阈值、Excel和Teams通知
 // @match        https://jira.xpaas.lenovo.com/*
 // @sandbox      DOM
@@ -22,7 +22,7 @@
   'use strict';
   // ================= 只需修改这里的规则配置 =================
   const CONFIG = {
-    fridayAdjustment: {enabled:true, subtractDays:2}, // 北京时间周五，所有KPI上下限提前2天
+    fridayAdjustment: {enabled:true, firstMinute:630, secondMinute:1020, firstSubtractDays:1, subtractDays:2}, // 本地周五10:30起减1天，17:00起减2天
     // 即将超期 自动通知；收件人由此 Webhook 的个人聊天工作流决定。
     autoNotifyApproaching: false, // false：只手动发送
     notificationCooldownHours: 24, // 同一工单24小时内最多提交一次（仅自动发送；手动发送不限次数）
@@ -50,11 +50,11 @@
   const isDashboard=()=>/^\/secure\/Dashboard\.jspa$/i.test(location.pathname);
   if (!/^\/(issues|browse)(\/|$)/.test(location.pathname)&&!isDashboard()) return;
   const badge=document.createElement('div');
-  badge.textContent='Jira Monitor v5.5.3 已注入，正在初始化…';
+  badge.textContent='Jira Monitor v5.5.4 已注入，正在初始化…';
   badge.style.cssText='position:fixed!important;top:8px!important;right:12px!important;z-index:2147483647!important;background:#0052cc!important;color:white!important;padding:8px!important;font:13px Arial!important;max-width:80vw!important;white-space:pre-wrap!important';
   (document.body||document.documentElement).append(badge);
   function report(error) {
-    const text='Jira Monitor v5.5.3 启动失败：'+(error?.message||error);
+    const text='Jira Monitor v5.5.4 启动失败：'+(error?.message||error);
     badge.textContent=text;badge.style.background='#ae2a19';
     (document.body||document.documentElement).append(badge);
     const box=document.createElement('div');box.textContent=text+'。请检查代码开头 CONFIG 配置。';
@@ -153,7 +153,7 @@
     const overlay=document.createElement('div');overlay.style.cssText='position:fixed;inset:0;z-index:2147483647;background:#0005;display:flex;align-items:center;justify-content:center';
     const shadow=overlay.attachShadow({mode:'open'}),box=document.createElement('div');box.style.cssText='background:white;color:#172b4d;padding:20px;border-radius:8px;width:760px;max-width:92vw;max-height:85vh;overflow:auto;font:14px Arial';shadow.append(box);
     const add=(tag,text,attr,parent=box)=>{const x=document.createElement(tag);if(text)x.textContent=text;if(attr)x.setAttribute(attr,'');parent.append(x);return x;};
-    add('b','统计规则设置');add('p','全项目共用；阈值单位为自然天，支持0.01天（14.4分钟）。下限≤天数＜上限：即将超期；天数≥上限：已超期。周五仍按现有设置提前2天。保存用于新扫描，已有结果及运行/暂停中的任务保留原规则。');
+    add('b','统计规则设置');add('p','全项目共用；阈值单位为自然天，支持0.01天（14.4分钟）。下限≤天数＜上限：即将超期；天数≥上限：已超期。按本地周五时间：10:30前不提前，10:30起提前1天，17:00起提前2天。保存用于新扫描，已有结果及运行/暂停中的任务保留原规则。');
     const rows=[];
     function build(rule){
       const group=add('fieldset',null,'data-rule-row');group.style.marginBottom='12px';add('legend',rule.name,null,group);const fields={};
@@ -193,9 +193,9 @@
   const dayText=n=>n===null?'':(n/86400).toFixed(2);
   function effectiveRule(rule,scanTime){
     const ms=typeof scanTime==='number'?scanTime:Date.parse(scanTime);
-    const friday=Number.isFinite(ms)&&new Date(ms+8*3600000).getUTCDay()===5;
-    const adjustment=CONFIG.fridayAdjustment;
-    const shift=adjustment?.enabled&&friday?adjustment.subtractDays:0;
+    const local=new Date(ms),friday=Number.isFinite(ms)&&local.getDay()===5;
+    const adjustment=CONFIG.fridayAdjustment,minute=local.getHours()*60+local.getMinutes();
+    const shift=adjustment?.enabled&&friday?(minute>=adjustment.secondMinute?adjustment.subtractDays:minute>=adjustment.firstMinute?adjustment.firstSubtractDays:0):0;
     return {...rule,minDays:Math.max(0,rule.minDays-shift),maxDays:Math.max(0,rule.maxDays-shift),fridayShiftDays:shift};
   }
   function resultRule(result,rule){
@@ -334,13 +334,13 @@
   panel.style.cssText='box-sizing:border-box;position:relative;width:100%;height:min(520px,75vh);max-height:75vh;overflow:hidden;z-index:2147483647;background:#fff;color:#172b4d;border:2px solid #0052cc;border-radius:8px;padding:14px;box-shadow:0 4px 24px #0004;font:13px Arial';
   // 使用 DOM 构建，避免站点 Trusted Types 策略拒绝 innerHTML。
   const make=(tag,text,attr,parent)=>{const x=document.createElement(tag);if(text)x.textContent=text;if(attr)x.setAttribute(attr,'');parent.append(x);return x;};
-  make('b','Jira Monitor v5.5.3',null,panel);
+  make('b','Jira Monitor v5.5.4',null,panel);
   const fold=make('button','收起','data-fold',panel);fold.style.float='right';
   const body=make('div',null,'data-body',panel);
   body.style.cssText='display:flex;flex-direction:column;height:calc(100% - 24px);min-height:0';
   panel.style.height=`min(${CONFIG.panelHeightPx}px,75vh)`;
   make('p','规则加载中…','data-config',body);
-  make('p','*周五扫描默认预警天数减 2 天。','data-friday-note',body).style.cssText='color:#de350b;font-size:12px;margin:0 0 10px;flex-shrink:0';
+  make('p','*本地周五：10:30前不预减；10:30起减1天；17:00起减2天（KPI上下限）。','data-friday-note',body).style.cssText='color:#de350b;font-size:12px;margin:0 0 10px;flex-shrink:0';
   const scope=make('select',null,'data-scope',body);
   const allOption=make('option','全部筛选结果',null,scope);allOption.value='all';
   const pageOption=make('option','仅当前分页',null,scope);pageOption.value='page';scope.value=CONFIG.scanScope;
@@ -817,6 +817,6 @@
   addEventListener('pageshow',()=>{epoch++;busy=false;autoDetail();render();setTimeout(pump,800);});
   addEventListener('popstate',()=>{autoDetail();render();});
   setInterval(()=>{autoDetail();if(!host.isConnected)mountPanel();if(!badge.isConnected)document.documentElement.append(badge);pump();},1500);
-  render();if(ruleLoadError)notice(ruleLoadError);badge.textContent='Jira Monitor v5.5.3 已启动 · 点击显示面板';badge.onclick=()=>{mountPanel();fold.textContent='收起';body.hidden=false;body.style.display='flex';panel.style.height=`min(${CONFIG.panelHeightPx}px,75vh)`;};autoDetail();setTimeout(pump,800);
+  render();if(ruleLoadError)notice(ruleLoadError);badge.textContent='Jira Monitor v5.5.4 已启动 · 点击显示面板';badge.onclick=()=>{mountPanel();fold.textContent='收起';body.hidden=false;body.style.display='flex';panel.style.height=`min(${CONFIG.panelHeightPx}px,75vh)`;};autoDetail();setTimeout(pump,800);
   } catch(error) { report(error); }
 })();
